@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import crypto from "node:crypto";
 import { decodeVoucher, encodeVoucher } from "../src/voucher/encode.js";
+import { signVoucher } from "../src/voucher/sign.js";
 
 describe("SDK Smoke Test", () => {
   it("loads and parses test-vectors/voucher.v1.json", () => {
@@ -59,6 +61,29 @@ describe("SDK Smoke Test", () => {
     expect(decoded.cap).toBe(BigInt(validVector.cap));
     expect(decoded.acceptUntil).toBe(BigInt(validVector.acceptUntil));
     expect(decoded.signature).toBe(validVector.signatureHex);
+  });
+
+  it("signs a voucher with dedicated voucher key matching test vector", async () => {
+    const vectorPath = resolve(__dirname, "../../../test-vectors/voucher.v1.json");
+    const raw = readFileSync(vectorPath, "utf-8");
+    const json = JSON.parse(raw);
+    const validVector = json.vectors[0];
+
+    const seed = crypto.createHash("sha256").update(validVector.seedLabel).digest();
+    const signed = await signVoucher({
+      version: 1,
+      contractId: validVector.contractId,
+      bookId: BigInt(validVector.bookId),
+      noteIndex: validVector.noteIndex,
+      merchant: validVector.merchant,
+      amount: BigInt(validVector.amount),
+      cap: BigInt(validVector.cap),
+      acceptUntil: BigInt(validVector.acceptUntil),
+      voucherSecretKey: seed,
+    });
+
+    expect(signed.signature).toBe(validVector.signatureHex);
+    expect(signed.voucherKey).toBe(validVector.voucherKeyHex);
   });
 
   it.todo("verifies Ed25519 signature over canonical voucher message");
