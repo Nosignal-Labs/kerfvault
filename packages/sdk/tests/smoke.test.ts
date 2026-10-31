@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import crypto from "node:crypto";
 import { decodeVoucher, encodeVoucher } from "../src/voucher/encode.js";
 import { signVoucher } from "../src/voucher/sign.js";
+import { verifyVoucher } from "../src/voucher/verify.js";
 
 describe("SDK Smoke Test", () => {
   it("loads and parses test-vectors/voucher.v1.json", () => {
@@ -86,7 +87,36 @@ describe("SDK Smoke Test", () => {
     expect(signed.voucherKey).toBe(validVector.voucherKeyHex);
   });
 
-  it.todo("verifies Ed25519 signature over canonical voucher message");
+  it("verifies Ed25519 signature over canonical voucher message across test vectors", async () => {
+    const vectorPath = resolve(__dirname, "../../../test-vectors/voucher.v1.json");
+    const raw = readFileSync(vectorPath, "utf-8");
+    const json = JSON.parse(raw);
+
+    for (const vec of json.vectors) {
+      if (vec.id === "vector-09-truncated-payload") {
+        expect(() => decodeVoucher(vec.wirePayload)).toThrow(/TruncatedPayload/);
+        continue;
+      }
+      if (vec.id === "vector-10-wrong-version") {
+        expect(() => decodeVoucher(vec.wirePayload)).toThrow(/InvalidVersion/);
+        continue;
+      }
+
+      const voucher = decodeVoucher(vec.wirePayload);
+      const res = await verifyVoucher(voucher, {
+        voucherKey: vec.voucherKeyHex,
+        currentTimestamp: vec.id === "vector-02-expired" ? 1700000000n : 1600000000n,
+      });
+
+      if (vec.expectedValid) {
+        expect(res.valid).toBe(true);
+      } else {
+        expect(res.valid).toBe(false);
+        expect(res.reason).toBe(vec.expectedError);
+      }
+    }
+  });
+
   it.todo("verifies voucher against a registry snapshot");
 });
 
