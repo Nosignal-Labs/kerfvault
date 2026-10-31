@@ -63,17 +63,50 @@ pub struct Note {
 /// Constructs canonical byte payload for offline voucher signing.
 /// Reference: docs/VOUCHER_SPEC.md
 pub fn voucher_message(
-    _env: &Env,
-    _contract_id: &Address,
-    _book_id: u64,
-    _note_index: u32,
-    _merchant: &Address,
-    _amount: i128,
-    _cap: i128,
-    _accept_until: u64,
+    env: &Env,
+    contract_id: &Address,
+    book_id: u64,
+    note_index: u32,
+    merchant: &Address,
+    amount: i128,
+    cap: i128,
+    accept_until: u64,
 ) -> Bytes {
-    // TODO: Implement canonical message serialization as specified in docs/VOUCHER_SPEC.md
-    todo!("canonical serialization of voucher message per docs/VOUCHER_SPEC.md")
+    let mut msg = Bytes::new(env);
+
+    // 1. Domain tag: "KERFVAULT_V1\0\0\0\0" (16 bytes)
+    let domain: [u8; 16] = *b"KERFVAULT_V1\0\0\0\0";
+    msg.append(&Bytes::from_array(env, &domain));
+
+    // 2. Version: 1 (1 byte)
+    msg.append(&Bytes::from_array(env, &[1u8]));
+
+    // 3. Contract ID: 56 ASCII bytes (StrKey)
+    let mut cid_buf = [0u8; 56];
+    contract_id.to_string().copy_into_slice(&mut cid_buf);
+    msg.append(&Bytes::from_array(env, &cid_buf));
+
+    // 4. Book ID: 8 bytes big-endian
+    msg.append(&Bytes::from_array(env, &book_id.to_be_bytes()));
+
+    // 5. Note Index: 4 bytes big-endian
+    msg.append(&Bytes::from_array(env, &note_index.to_be_bytes()));
+
+    // 6. Merchant Address: 56 ASCII bytes (StrKey)
+    let mut merch_buf = [0u8; 56];
+    merchant.to_string().copy_into_slice(&mut merch_buf);
+    msg.append(&Bytes::from_array(env, &merch_buf));
+
+    // 7. Amount: 16 bytes big-endian
+    msg.append(&Bytes::from_array(env, &amount.to_be_bytes()));
+
+    // 8. Cap: 16 bytes big-endian
+    msg.append(&Bytes::from_array(env, &cap.to_be_bytes()));
+
+    // 9. Accept Until: 8 bytes big-endian
+    msg.append(&Bytes::from_array(env, &accept_until.to_be_bytes()));
+
+    msg
 }
 
 #[contract]
