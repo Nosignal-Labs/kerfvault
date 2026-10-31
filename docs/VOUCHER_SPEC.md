@@ -68,8 +68,8 @@ For presentation in QR codes and HTTP payloads:
 
 ### Decision 1: 56-Byte StrKey Encoding for Addresses
 - **Options Considered**: Raw 32-byte Ed25519 public key / contract hash vs 56-byte ASCII StrKey string (`C...` / `G...`).
-- **Resolution**: Use 56-byte ASCII StrKey.
-- **Rationale**: In the Soroban `no_std` runtime, `Address::to_string()` produces the 56-byte StrKey string natively without allocations or external dependencies. Using raw 32-byte public keys would require pulling in an external base32 decoding crate or hand-rolling decoders in smart contracts, introducing significant attack surface. In TypeScript, addresses are already managed as StrKey strings.
+- **Resolution**: Settled on 56-byte ASCII StrKey wire encoding.
+- **Rationale**: In the Soroban `no_std` runtime, `Address::to_string()` produces the 56-byte StrKey string natively without allocations or external dependencies. Using raw 32-byte public keys would require pulling in an external base32 decoding crate or hand-rolling decoders in smart contracts, introducing significant attack surface. In TypeScript, addresses are already managed as StrKey strings. Wire framing remains ultra-compact (245 bytes total).
 
 ### Decision 2: Big-Endian Byte Order
 - **Options Considered**: Little-endian vs Big-endian.
