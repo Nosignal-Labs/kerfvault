@@ -1,0 +1,22 @@
+{
+  "$schema": "./voucher.schema.json",
+  "version": 1,
+  "description": "Standard offline voucher test vector (v1) with placeholder signatures and keys",
+  "vectors": [
+    {
+      "id": "vector-v1-valid-placeholder",
+      "status": "PLACEHOLDER",
+      "contractId": "PLACEHOLDER_CONTRACT_ID_CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "bookId": 101,
+      "noteIndex": 0,
+      "merchant": "PLACEHOLDER_MERCHANT_GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      "amount": "10000000",
+      "cap": "10000000",
+      "acceptUntil": 1793404800,
+      "voucherKey": "PLACEHOLDER_PUBKEY_9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "signature": "PLACEHOLDER_SIG_3045022100e4b868bc5b1a3e6c0c2a52efc187bcbbd41e77f0d0615858cfd795b871c4c1a502206778f6f5904d6e990c797cff17e9bb4ebcc699dd5a4f35b6a71cbcfd48d08595",
+      "expectedValid": true
+    }
+  ]
+}
+

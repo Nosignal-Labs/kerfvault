@@ -1,0 +1,57 @@
+name: JavaScript & TypeScript CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "apps/**"
+      - "services/**"
+      - "test-vectors/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/js.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "apps/**"
+      - "services/**"
+      - "test-vectors/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/js.yml"
+
+jobs:
+  test-js:
+    name: Lint, Typecheck, Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4.1.0
+        with:
+          version: 12.16.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Lint all workspaces
+        run: pnpm -r lint
+
+      - name: Typecheck all workspaces
+        run: pnpm -r typecheck
+
+      - name: Run unit & smoke tests
+        run: pnpm -r test
+
+      - name: Build all packages & apps
+        run: pnpm -r build
+
