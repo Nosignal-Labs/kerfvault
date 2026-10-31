@@ -15,7 +15,7 @@ Key security requirements:
 - **Redirect Protection**: An untrusted submitter or relay cannot alter the recipient merchant address because the merchant address is bound inside the signed message.
 - **Inflation Protection**: The voucher amount is constrained by the contract to $\le \text{cap}$ and $\le \text{denomination}$.
 - **Temporal Boundedness**: The merchant reader rejects vouchers offline past `accept_until`.
-- **Domain & Contract Binding**: The voucher binds both a protocol domain tag and the specific target contract address to prevent cross-contract and cross-network replaying.
+- **Domain & Contract Binding**: The voucher binds both a dedicated 16-byte protocol domain tag (`b"KERFVAULT_V1\0\0\0\0"`) and the specific target contract address (`contract_id`) to prevent cross-contract and cross-network replaying.
 
 ---
 
