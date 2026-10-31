@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **STATUS: v1 FROZEN**
-> This specification defines the frozen canonical wire format and binary message format for Kerfvault offline vouchers. All implementations (Soroban smart contracts, TypeScript SDK, merchant readers, and shopper wallets) must adhere strictly to these byte-level definitions.
+> This specification defines the frozen canonical wire format and binary message format for Kerfvault offline vouchers at version 1. No wire-format changes are permitted without bumping the version identifier. All implementations (Soroban smart contracts, TypeScript SDK, merchant readers, and shopper wallets) must adhere strictly to these byte-level definitions.
 
 ---
 
