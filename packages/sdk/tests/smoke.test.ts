@@ -19,7 +19,7 @@ describe("SDK Smoke Test", () => {
 
     const firstVector = json.vectors[0];
     expect(firstVector.id).toBe("vector-01-valid");
-    expect(firstVector.contractId).toBe("CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    expect(firstVector.contractId).toBe("CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4");
     expect(firstVector.bookId).toBe(101);
     expect(firstVector.noteIndex).toBe(0);
     expect(firstVector.amount).toBe("10000000");

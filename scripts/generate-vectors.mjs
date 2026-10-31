@@ -19,11 +19,13 @@ const pubDer = pubKey.export({ format: 'der', type: 'spki' });
 const rawPubKey = pubDer.subarray(pubDer.length - 32);
 const voucherKeyHex = rawPubKey.toString('hex');
 
-// Standard test fixtures
-const CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+// Standard test fixtures with valid Stellar StrKey checksums
+const CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+const CONTRACT_ID_B = 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526';
 const BOOK_ID = 101n;
 const NOTE_INDEX = 0;
 const MERCHANT_ID = 'GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ';
+const MERCHANT_ID_B = 'GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA';
 const AMOUNT = 10_000_000n; // 1 XLM in stroops
 const CAP = 10_000_000n;
 const ACCEPT_UNTIL = 1793404800n; // Future timestamp
@@ -182,18 +184,18 @@ const vectors = [
     contractId: CONTRACT_ID,
     bookId: Number(BOOK_ID),
     noteIndex: NOTE_INDEX,
-    merchant: 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+    merchant: MERCHANT_ID_B,
     amount: AMOUNT.toString(),
     cap: CAP.toString(),
     acceptUntil: Number(ACCEPT_UNTIL),
     canonicalMessageHex: buildCanonicalMessage({
-      merchant: 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      merchant: MERCHANT_ID_B,
     }).toString('hex'),
     signatureHex: validSig.toString('hex'),
     wirePayload: toUrlSafeBase64(
       Buffer.concat([
         buildCanonicalMessage({
-          merchant: 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+          merchant: MERCHANT_ID_B,
         }),
         validSig,
       ])
@@ -224,7 +226,7 @@ const vectors = [
     description: 'Voucher signed for contract A presented against contract B',
     seedLabel: SEED_LABEL,
     voucherKeyHex,
-    contractId: 'CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+    contractId: CONTRACT_ID_B,
     bookId: Number(BOOK_ID),
     noteIndex: NOTE_INDEX,
     merchant: MERCHANT_ID,
@@ -232,13 +234,13 @@ const vectors = [
     cap: CAP.toString(),
     acceptUntil: Number(ACCEPT_UNTIL),
     canonicalMessageHex: buildCanonicalMessage({
-      contractId: 'CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      contractId: CONTRACT_ID_B,
     }).toString('hex'),
     signatureHex: validSig.toString('hex'),
     wirePayload: toUrlSafeBase64(
       Buffer.concat([
         buildCanonicalMessage({
-          contractId: 'CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+          contractId: CONTRACT_ID_B,
         }),
         validSig,
       ])
