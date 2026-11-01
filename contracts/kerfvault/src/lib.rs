@@ -174,6 +174,7 @@ impl KerfvaultContract {
             note_count: denoms.len(),
         };
 
+        // Extend persistent storage TTL for book on creation
         let book_key = DataKey::Book(book_id);
         env.storage().persistent().set(&book_key, &book);
         env.storage().persistent().extend_ttl(
