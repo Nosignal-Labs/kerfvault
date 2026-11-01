@@ -289,6 +289,7 @@ impl KerfvaultContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
+        // Announce note redemption with an event containing book_id, note_index, merchant, and amount
         env.events().publish(
             (EVENT_NOTE_REDEEMED, book_id),
             (note_index, merchant, amount),
