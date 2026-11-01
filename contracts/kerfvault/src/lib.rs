@@ -148,7 +148,7 @@ impl KerfvaultContract {
                 .ok_or(Error::InvalidDenominations)?;
         }
 
-        // Pull funds from owner into contract escrow via SEP-41 token interface
+        // Pull total escrow amount from owner into contract via SEP-41 token interface
         let contract_address = env.current_contract_address();
         let token_client = soroban_sdk::token::Client::new(&env, &token);
         token_client.transfer(&owner, &contract_address, &total);
