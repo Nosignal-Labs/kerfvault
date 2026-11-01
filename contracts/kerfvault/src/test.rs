@@ -507,11 +507,64 @@ fn test_balance_invariant_after_every_operation() {
         .redeem(&book_id, &2, &merchant, &1_000_000, &30_000_000, &1793404800, &sig2);
     check_invariant();
 
-    // Final checks: all notes redeemed, free balance is 4 + 0 + 29 = 33 XLM, contract balance is 33 XLM
-    let book = fix.client.get_book(&book_id);
-    assert_eq!(book.free_balance, 33_000_000);
-    assert_eq!(fix.token_client.balance(&fix.contract_id), 33_000_000);
-    assert_eq!(fix.token_client.balance(&merchant), 27_000_000);
+    // 5. Invariant holds after failed operations (e.g. double-redeem or overspending)
+    let failed_res = fix.client.try_redeem(
+        &book_id,
+        &2,
+        &merchant,
+        &1_000_000,
+        &30_000_000,
+        &1793404800,
+        &sig2,
+    );
+    assert!(failed_res.is_err());
+    check_invariant();
+
+    // 6. Invariant holds across multiple books sharing the same token contract
+    let owner2 = Address::generate(&fix.env);
+    fix.mint(&owner2, 40_000_000);
+    let denoms2 = vec![&fix.env, 15_000_000, 25_000_000];
+    let book_id_2 = fix
+        .client
+        .open_book(&owner2, &fix.token_address, &fix.voucher_key_bytes, &denoms2, &1793404800);
+
+    let check_multi_book_invariant = || {
+        let contract_bal = fix.token_client.balance(&fix.contract_id);
+        let mut total_expected: i128 = 0;
+
+        for b_id in [book_id, book_id_2] {
+            let b = fix.client.get_book(&b_id);
+            total_expected += b.free_balance;
+            for i in 0..b.note_count {
+                let note = fix.client.get_note(&b_id, &i);
+                if note.state == NoteState::Open {
+                    total_expected += note.denomination;
+                }
+            }
+        }
+
+        assert_eq!(
+            contract_bal, total_expected,
+            "MULTI-BOOK INVARIANT VIOLATION: Contract balance ({}) != total book escrows ({})",
+            contract_bal, total_expected
+        );
+    };
+
+    check_multi_book_invariant();
+
+    // Redeem note 0 in book 2 (spend 10 of 15 XLM)
+    let sig_b2_0 = fix.sign(book_id_2, 0, &merchant, 10_000_000, 15_000_000, 1793404800);
+    fix.client
+        .redeem(&book_id_2, &0, &merchant, &10_000_000, &15_000_000, &1793404800, &sig_b2_0);
+    check_multi_book_invariant();
+
+    // Final checks
+    let book1 = fix.client.get_book(&book_id);
+    let book2 = fix.client.get_book(&book_id_2);
+    assert_eq!(book1.free_balance, 33_000_000);
+    assert_eq!(book2.free_balance, 5_000_000); // 15 - 10 = 5 refund
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 63_000_000); // 33 + 5 + 25
+    assert_eq!(fix.token_client.balance(&merchant), 37_000_000); // 27 + 10
 }
 
 #[test]
