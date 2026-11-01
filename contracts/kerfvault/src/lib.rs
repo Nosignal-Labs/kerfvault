@@ -16,6 +16,7 @@ pub const EVENT_BOOK_RECLAIMED: Symbol = symbol_short!("reclaimed");
 pub const PERSISTENT_BUMP_AMOUNT: u32 = 518_400; // ~30 days @ 5s/ledger
 pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960; // ~7 days
 
+/// Comprehensive failure error codes raised by Kerfvault contract
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
