@@ -82,3 +82,22 @@ pnpm -r test
 pnpm -r build
 ```
 
+
+
+---
+
+## 4. Testnet Deployment & Identities
+
+Testnet deployments are scripted via `scripts/deploy-testnet.sh` and tracked in `deployments/testnet.json`.
+
+| Contract / Entity | Testnet ID / Address | Description |
+|---|---|---|
+| **Kerfvault Contract** | `CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE` | Core Kerfvault escrow & voucher verification contract |
+| **Native SAC (XLM)** | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` | Soroban Asset Contract wrapping native XLM |
+| **Test USD SAC (KVUSD)** | `CDE6VINFMZEDXBFM52ORE62FVN2NTHBFD27AVAF4TQO73IPJRZCL65XN` | Soroban Asset Contract for custom test asset `KVUSD` |
+| **KVUSD Issuer** | `GCOQSUSRFKOLBTEMY5THMHIMLOLILMI6WI4R6XGT3LJ2YGHXFTADSTLD` | Classic asset issuing identity |
+| **Test Deployer** | `GBYORV7UOSJQIJS4ADSER2UCR7ZNAAEOVUVCKBPWFG7RN5P2HXJCWNJK` | Deployer account funded via Friendbot |
+| **Test Merchant** | `GDELSDATL7W2JEDSUGSQUFP3YP36VPWM4V4C5TJLIY4LZMIMKGCSRNFG` | Payee merchant identity for voucher redemption tests |
+
+> [!NOTE]
+> When using classic Stellar assets wrapped under a Soroban Asset Contract (SAC), any classic account receiving payouts or balances must establish a trustline to the asset issuer prior to receiving funds. Native XLM requires no trustline.
