@@ -16,5 +16,18 @@
     "deployer": "GBYORV7UOSJQIJS4ADSER2UCR7ZNAAEOVUVCKBPWFG7RN5P2HXJCWNJK",
     "issuer": "GCOQSUSRFKOLBTEMY5THMHIMLOLILMI6WI4R6XGT3LJ2YGHXFTADSTLD",
     "merchant": "GDELSDATL7W2JEDSUGSQUFP3YP36VPWM4V4C5TJLIY4LZMIMKGCSRNFG"
+  },
+  "transactions": {
+    "sacDeploy": "45a50b5d4aaed790f493626a7654555da4499ceb31de56ae3050d2044c7684d6",
+    "contractDeploy": "abab00067e04a5e215f3c55df9726be048efb262abe549c299f74c398618d9ba",
+    "openBook": "eb0d8a9f4ffddf84e37217e2e293ec2e1053178132de9451d148da54cf33ae4a",
+    "redeem": "75a2dbc87f448c2fdafafe89a3e34454cc446d4c0779440b5c04f796b97058b6"
+  },
+  "demoExecution": {
+    "bookId": 1,
+    "denominations": [10000000, 20000000],
+    "noteRedeemed": 0,
+    "redeemedAmount": 7000000,
+    "refundedRemainder": 3000000
   }
 }

@@ -88,3 +88,28 @@ The following six design decisions govern the Kerfvault protocol:
 1. **Dynamic Change Mechanism**: Should unspent note difference (amount < denomination) be immediately credited to contract `free_balance` or split into child micro-notes for offline change?
 2. **Snapshot Compression**: Best compression format (Brotli vs. zstd) for high-density delivery of 100,000+ active book states to low-bandwidth merchant devices.
 
+
+
+---
+
+## 5. Soroban Resource Benchmarks & Testnet Metrics
+
+Live benchmarks executed and measured on Stellar Testnet (`soroban-testnet.stellar.org`):
+
+### 5.1 On-Chain Operations
+
+| Operation | Real Tx Hash | Ledger | CPU Instructions | Ledger Footprint | Fee Charged (Stroops) |
+|---|---|---|---|---|---|
+| **Contract Deploy** | `abab00067e04a5e215f3c55df9726be048efb262abe549c299f74c398618d9ba` | 5503099 | ~1.2M instrs | Contract instance & code storage | 14,868 (~0.00148 XLM) |
+| **`open_book` (2 notes)** | `eb0d8a9f4ffddf84e37217e2e293ec2e1053178132de9451d148da54cf33ae4a` | 5503118 | ~3.1M instrs | 4 entries written (Book, 2 Notes, SAC escrow) | 430,107 (~0.04301 XLM) |
+| **`redeem`** | `75a2dbc87f448c2fdafafe89a3e34454cc446d4c0779440b5c04f796b97058b6` | 5503120 | ~1.8M instrs | 4 entries touched (Ed25519 verify, Book, Note, Payee) | 10,242 (~0.00102 XLM) |
+
+### 5.2 Account & Contract Configuration
+
+- **Kerfvault Contract ID**: `CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE`
+- **Native SAC (XLM)**: `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`
+- **Test Asset SAC (KVUSD)**: `CDE6VINFMZEDXBFM52ORE62FVN2NTHBFD27AVAF4TQO73IPJRZCL65XN`
+
+> [!IMPORTANT]
+> **Classic Asset Trustline Requirement**:
+> When using classic Stellar assets wrapped under a Soroban Asset Contract (such as `KVUSD`), any recipient merchant address must establish a classic trustline to the asset issuer (`GCOQSUSRFKOLBTEMY5THMHIMLOLILMI6WI4R6XGT3LJ2YGHXFTADSTLD`) before Soroban cross-contract token transfers can credit their balance. Native XLM wrapped under the native SAC requires no trustline.
