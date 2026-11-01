@@ -21,7 +21,7 @@ This document explicitly defines the boundaries for the Kerfvault live demo slic
 
 ## 2. Phase Status Checklist
 
-- [ ] **Phase S1:** Foundation, spec freeze, vectors, crypto
+- [x] **Phase S1:** Foundation, spec freeze, vectors, crypto
 - [ ] **Phase S2:** Contract core
 - [ ] **Phase S3:** SDK client and CLI demo
 - [ ] **Phase S4:** Indexer, relay and backend deploy prep
