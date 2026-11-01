@@ -196,6 +196,7 @@ impl KerfvaultContract {
             );
         }
 
+        // Emit EVENT_BOOK_OPENED event with book_id topic and metadata payload for indexer
         env.events().publish(
             (EVENT_BOOK_OPENED, book_id),
             (owner, token, total, denoms.len()),
