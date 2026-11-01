@@ -276,7 +276,7 @@ impl KerfvaultContract {
             PERSISTENT_BUMP_AMOUNT,
         );
 
-        // Credit unused note remainder to book's free balance
+        // Credit unused note remainder (denomination - amount) to book's free balance
         let refund = note.denomination - amount;
         book.free_balance = book
             .free_balance
