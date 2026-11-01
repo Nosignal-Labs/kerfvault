@@ -513,3 +513,105 @@ fn test_balance_invariant_after_every_operation() {
     assert_eq!(fix.token_client.balance(&fix.contract_id), 33_000_000);
     assert_eq!(fix.token_client.balance(&merchant), 27_000_000);
 }
+
+#[test]
+fn test_forged_and_cross_note_signatures_rejected() {
+    let env = Env::default();
+    let fix = TestFixture::new(env);
+    let owner = Address::generate(&fix.env);
+    let merchant = Address::generate(&fix.env);
+    let attacker_merchant = Address::generate(&fix.env);
+
+    fix.mint(&owner, 50_000_000);
+    let denoms = vec![&fix.env, 10_000_000, 20_000_000];
+    let book_id = fix
+        .client
+        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+
+    // 1. Completely forged signature (invalid Ed25519 signature)
+    let forged_arr = [0x5au8; 64];
+    let forged_sig = BytesN::from_array(&fix.env, &forged_arr);
+    let res_forged = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fix.client
+            .redeem(&book_id, &0, &merchant, &5_000_000, &10_000_000, &1793404800, &forged_sig);
+    }));
+    assert!(res_forged.is_err(), "Forged random signature must be rejected");
+
+    // 2. Signature from an attacker's key (not the book's voucher key)
+    let attacker_seed = [99u8; 32];
+    let attacker_key = SigningKey::from_bytes(&attacker_seed);
+    let msg = voucher_message(
+        &fix.env,
+        &fix.contract_id,
+        book_id,
+        0,
+        &merchant,
+        5_000_000,
+        10_000_000,
+        1793404800,
+    );
+    let mut msg_buf = [0u8; 181];
+    msg.copy_into_slice(&mut msg_buf);
+    let attacker_sig = attacker_key.sign(&msg_buf);
+    let attacker_sig_bytes = BytesN::from_array(&fix.env, &attacker_sig.to_bytes());
+    let res_attacker = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fix.client.redeem(
+            &book_id,
+            &0,
+            &merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &attacker_sig_bytes,
+        );
+    }));
+    assert!(res_attacker.is_err(), "Signature from unauthorized key must be rejected");
+
+    // 3. Valid signature for note 0 replayed against note 1
+    let valid_sig_note0 = fix.sign(book_id, 0, &merchant, 5_000_000, 10_000_000, 1793404800);
+    let res_cross_note = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fix.client.redeem(
+            &book_id,
+            &1,
+            &merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &valid_sig_note0,
+        );
+    }));
+    assert!(res_cross_note.is_err(), "Cross-note signature replay must be rejected");
+
+    // 4. Valid signature for book 1 replayed against book 2
+    let denoms2 = vec![&fix.env, 10_000_000];
+    fix.mint(&owner, 10_000_000);
+    let book_id_2 = fix
+        .client
+        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms2, &1793404800);
+    let res_cross_book = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fix.client.redeem(
+            &book_id_2,
+            &0,
+            &merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &valid_sig_note0,
+        );
+    }));
+    assert!(res_cross_book.is_err(), "Cross-book signature replay must be rejected");
+
+    // 5. Valid signature redirected to attacker merchant
+    let res_redirect = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fix.client.redeem(
+            &book_id,
+            &0,
+            &attacker_merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &valid_sig_note0,
+        );
+    }));
+    assert!(res_redirect.is_err(), "Payee redirect signature replay must be rejected");
+}
