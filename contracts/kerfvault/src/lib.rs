@@ -238,6 +238,7 @@ impl KerfvaultContract {
             .get(&note_key)
             .ok_or(Error::NoteNotFound)?;
 
+        // Block note from being redeemed twice: enforce NoteState::Open
         if note.state != NoteState::Open {
             return Err(Error::NoteAlreadyRedeemed);
         }
