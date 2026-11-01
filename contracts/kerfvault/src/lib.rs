@@ -217,6 +217,7 @@ impl KerfvaultContract {
         accept_until: u64,
         signature: BytesN<64>,
     ) -> Result<(), Error> {
+        // Hold redemptions strictly to the signed cap and available note denomination
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
