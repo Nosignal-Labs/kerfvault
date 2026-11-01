@@ -247,7 +247,7 @@ impl KerfvaultContract {
             return Err(Error::AmountExceedsNote);
         }
 
-        // Rebuild canonical voucher message
+        // Rebuild canonical voucher message binding merchant address for redirect protection
         let contract_address = env.current_contract_address();
         let msg = voucher_message(
             &env,
