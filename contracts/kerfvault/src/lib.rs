@@ -1,5 +1,6 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
+#![allow(deprecated)]
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
@@ -10,6 +11,10 @@ use soroban_sdk::{
 pub const EVENT_BOOK_OPENED: Symbol = symbol_short!("opened");
 pub const EVENT_NOTE_REDEEMED: Symbol = symbol_short!("redeemed");
 pub const EVENT_BOOK_RECLAIMED: Symbol = symbol_short!("reclaimed");
+
+/// Storage lifetime constants for persistent entries
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 518_400; // ~30 days @ 5s/ledger
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 120_960; // ~7 days
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -25,6 +30,7 @@ pub enum Error {
     DeadlineNotReached = 8,
     NotOwner = 9,
     InvalidDenominations = 10,
+    InvalidAmount = 11,
 }
 
 #[contracttype]
@@ -51,6 +57,7 @@ pub struct Book {
     pub voucher_key: BytesN<32>,
     pub redeem_deadline: u64,
     pub free_balance: i128,
+    pub note_count: u32,
 }
 
 #[contracttype]
@@ -116,58 +123,218 @@ pub struct KerfvaultContract;
 impl KerfvaultContract {
     /// Owner locks funds into a book of fixed denomination notes.
     pub fn open_book(
-        _env: Env,
-        _owner: Address,
-        _token: Address,
-        _voucher_key: BytesN<32>,
-        _denoms: Vec<i128>,
-        _redeem_deadline: u64,
+        env: Env,
+        owner: Address,
+        token: Address,
+        voucher_key: BytesN<32>,
+        denoms: Vec<i128>,
+        redeem_deadline: u64,
     ) -> Result<u64, Error> {
-        // TODO: Require owner authorization, transfer tokens to contract via SEP-41, store book and notes, emit book_opened event
-        todo!("open_book: lock tokens, populate notes, persist state, and emit book_opened event")
+        owner.require_auth();
+
+        if denoms.is_empty() {
+            return Err(Error::InvalidDenominations);
+        }
+
+        let mut total: i128 = 0;
+        for denom in denoms.iter() {
+            if denom <= 0 {
+                return Err(Error::InvalidDenominations);
+            }
+            total = total
+                .checked_add(denom)
+                .ok_or(Error::InvalidDenominations)?;
+        }
+
+        // Pull funds from owner into contract escrow via SEP-41 token interface
+        let contract_address = env.current_contract_address();
+        let token_client = soroban_sdk::token::Client::new(&env, &token);
+        token_client.transfer(&owner, &contract_address, &total);
+
+        // Increment BookCount to assign unique book_id
+        let book_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BookCount)
+            .unwrap_or(0u64)
+            .checked_add(1)
+            .expect("overflow book_id");
+        env.storage()
+            .persistent()
+            .set(&DataKey::BookCount, &book_id);
+
+        let book = Book {
+            owner: owner.clone(),
+            token: token.clone(),
+            voucher_key,
+            redeem_deadline,
+            free_balance: 0,
+            note_count: denoms.len(),
+        };
+
+        let book_key = DataKey::Book(book_id);
+        env.storage().persistent().set(&book_key, &book);
+        env.storage().persistent().extend_ttl(
+            &book_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        for (idx, denom) in denoms.iter().enumerate() {
+            let note = Note {
+                denomination: denom,
+                state: NoteState::Open,
+            };
+            let note_key = DataKey::Note(book_id, idx as u32);
+            env.storage().persistent().set(&note_key, &note);
+            env.storage().persistent().extend_ttl(
+                &note_key,
+                PERSISTENT_LIFETIME_THRESHOLD,
+                PERSISTENT_BUMP_AMOUNT,
+            );
+        }
+
+        env.events().publish(
+            (EVENT_BOOK_OPENED, book_id),
+            (owner, token, total, denoms.len()),
+        );
+
+        Ok(book_id)
     }
 
     /// Redeems an offline voucher. Callable by anyone (merchant or relay); merchant address is bound in signature.
     pub fn redeem(
-        _env: Env,
-        _book_id: u64,
-        _note_index: u32,
-        _merchant: Address,
-        _amount: i128,
-        _cap: i128,
-        _accept_until: u64,
-        _signature: BytesN<64>,
+        env: Env,
+        book_id: u64,
+        note_index: u32,
+        merchant: Address,
+        amount: i128,
+        cap: i128,
+        accept_until: u64,
+        signature: BytesN<64>,
     ) -> Result<(), Error> {
-        // TODO: Validate note state, verify ed25519 signature, transfer payment to merchant via SEP-41, credit remaining note diff to free_balance, emit note_redeemed event
-        todo!("redeem: verify voucher signature, transfer SEP-41 tokens, update note state, emit note_redeemed")
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if amount > cap {
+            return Err(Error::AmountExceedsCap);
+        }
+
+        let book_key = DataKey::Book(book_id);
+        let mut book: Book = env
+            .storage()
+            .persistent()
+            .get(&book_key)
+            .ok_or(Error::BookNotFound)?;
+
+        let note_key = DataKey::Note(book_id, note_index);
+        let mut note: Note = env
+            .storage()
+            .persistent()
+            .get(&note_key)
+            .ok_or(Error::NoteNotFound)?;
+
+        if note.state != NoteState::Open {
+            return Err(Error::NoteAlreadyRedeemed);
+        }
+
+        if amount > note.denomination {
+            return Err(Error::AmountExceedsNote);
+        }
+
+        // Rebuild canonical voucher message
+        let contract_address = env.current_contract_address();
+        let msg = voucher_message(
+            &env,
+            &contract_address,
+            book_id,
+            note_index,
+            &merchant,
+            amount,
+            cap,
+            accept_until,
+        );
+
+        // Verify Ed25519 signature
+        env.crypto()
+            .ed25519_verify(&book.voucher_key, &msg, &signature);
+
+        // Transfer payout to merchant via SEP-41 token interface
+        let token_client = soroban_sdk::token::Client::new(&env, &book.token);
+        token_client.transfer(&contract_address, &merchant, &amount);
+
+        // Update note state to Redeemed
+        note.state = NoteState::Redeemed;
+        env.storage().persistent().set(&note_key, &note);
+        env.storage().persistent().extend_ttl(
+            &note_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        // Credit unused note remainder to book's free balance
+        let refund = note.denomination - amount;
+        book.free_balance = book
+            .free_balance
+            .checked_add(refund)
+            .expect("overflow free_balance");
+        env.storage().persistent().set(&book_key, &book);
+        env.storage().persistent().extend_ttl(
+            &book_key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+
+        env.events().publish(
+            (EVENT_NOTE_REDEEMED, book_id),
+            (note_index, merchant, amount),
+        );
+
+        Ok(())
     }
 
     /// Owner withdraws unredeemed notes and free balance after redeem_deadline + grace period.
+    /// Deferred to production hardening phase (see docs/ROADMAP.md).
     pub fn reclaim(_env: Env, _book_id: u64) -> Result<(), Error> {
-        // TODO: Require owner auth, ensure deadline + grace period has passed, refund unredeemed note amounts and free balance, emit book_reclaimed event
-        todo!("reclaim: verify grace period expiry, refund remaining balance to owner, emit book_reclaimed")
+        todo!("reclaim is deferred to the second half (see docs/ROADMAP.md)")
     }
 
     /// Extends storage TTL for a book and its notes in persistent storage.
+    /// Standalone manual TTL extension is deferred to roadmap.
     pub fn extend_ttl(_env: Env, _book_id: u64) -> Result<(), Error> {
-        // TODO: Extend persistent storage TTL for book entry and note entries using env.storage().persistent().extend_ttl(...)
-        todo!("extend_ttl: extend persistent storage lifetime for book and associated notes")
+        todo!("standalone extend_ttl is deferred to the second half (see docs/ROADMAP.md)")
     }
 
     /// Returns book metadata by ID.
     pub fn get_book(env: Env, book_id: u64) -> Result<Book, Error> {
-        env.storage()
+        let key = DataKey::Book(book_id);
+        let book = env
+            .storage()
             .persistent()
-            .get(&DataKey::Book(book_id))
-            .ok_or(Error::BookNotFound)
+            .get(&key)
+            .ok_or(Error::BookNotFound)?;
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        Ok(book)
     }
 
     /// Returns note metadata for a given book and note index.
     pub fn get_note(env: Env, book_id: u64, note_index: u32) -> Result<Note, Error> {
-        env.storage()
+        let key = DataKey::Note(book_id, note_index);
+        let note = env
+            .storage()
             .persistent()
-            .get(&DataKey::Note(book_id, note_index))
-            .ok_or(Error::NoteNotFound)
+            .get(&key)
+            .ok_or(Error::NoteNotFound)?;
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_LIFETIME_THRESHOLD,
+            PERSISTENT_BUMP_AMOUNT,
+        );
+        Ok(note)
     }
 }
 
