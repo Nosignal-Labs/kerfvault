@@ -259,7 +259,7 @@ impl KerfvaultContract {
             accept_until,
         );
 
-        // Verify Ed25519 signature
+        // Verify Ed25519 signature over canonical voucher message against book's voucher_key
         env.crypto()
             .ed25519_verify(&book.voucher_key, &msg, &signature);
 
