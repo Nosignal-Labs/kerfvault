@@ -133,6 +133,7 @@ impl KerfvaultContract {
     ) -> Result<u64, Error> {
         owner.require_auth();
 
+        // Reject empty or malformed denominations before any escrow funds move
         if denoms.is_empty() {
             return Err(Error::InvalidDenominations);
         }
