@@ -309,7 +309,7 @@ impl KerfvaultContract {
         todo!("standalone extend_ttl is deferred to the second half (see docs/ROADMAP.md)")
     }
 
-    /// Returns book metadata by ID.
+    /// Returns book metadata by ID (read-only getter with TTL refresh).
     pub fn get_book(env: Env, book_id: u64) -> Result<Book, Error> {
         let key = DataKey::Book(book_id);
         let book = env
@@ -325,7 +325,7 @@ impl KerfvaultContract {
         Ok(book)
     }
 
-    /// Returns note metadata for a given book and note index.
+    /// Returns note metadata for a given book and note index (read-only getter with TTL refresh).
     pub fn get_note(env: Env, book_id: u64, note_index: u32) -> Result<Note, Error> {
         let key = DataKey::Note(book_id, note_index);
         let note = env
