@@ -224,9 +224,13 @@ fn test_open_book_success_and_getters() {
     fix.mint(&owner, 60_000_000);
     let denoms = vec![&fix.env, 10_000_000, 20_000_000, 30_000_000];
 
-    let book_id = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+    let book_id = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms,
+        &1793404800,
+    );
     assert_eq!(book_id, 1);
 
     // Assert contract received total 60 XLM
@@ -300,9 +304,13 @@ fn test_redeem_happy_path_and_unused_remainder_refund() {
 
     fix.mint(&owner, 50_000_000);
     let denoms = vec![&fix.env, 10_000_000, 40_000_000];
-    let book_id = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+    let book_id = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms,
+        &1793404800,
+    );
 
     // Sign voucher spending 7 XLM out of 10 XLM note 0 with cap 10 XLM
     let amount = 7_000_000;
@@ -338,9 +346,13 @@ fn test_redeem_blocks_double_redeem() {
 
     fix.mint(&owner, 20_000_000);
     let denoms = vec![&fix.env, 20_000_000];
-    let book_id = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+    let book_id = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms,
+        &1793404800,
+    );
 
     let amount = 20_000_000;
     let cap = 20_000_000;
@@ -368,9 +380,13 @@ fn test_redeem_rejects_adversarial_vouchers() {
 
     fix.mint(&owner, 20_000_000);
     let denoms = vec![&fix.env, 10_000_000, 10_000_000];
-    let book_id = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+    let book_id = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms,
+        &1793404800,
+    );
 
     // 1. Amount exceeds cap
     let res_cap = fix.client.try_redeem(
@@ -435,15 +451,29 @@ fn test_redeem_rejects_adversarial_vouchers() {
     // 6. Signature signed for note 0 but submitted for note 1 (cross-note attack)
     let sig0 = fix.sign(book_id, 0, &merchant, 5_000_000, 10_000_000, 1793404800);
     let cross_note_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        fix.client
-            .redeem(&book_id, &1, &merchant, &5_000_000, &10_000_000, &1793404800, &sig0);
+        fix.client.redeem(
+            &book_id,
+            &1,
+            &merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &sig0,
+        );
     }));
     assert!(cross_note_res.is_err(), "Cross-note signature must fail");
 
     // 7. Signature signed for merchant A but submitted for other_merchant (redirect attack)
     let redirect_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        fix.client
-            .redeem(&book_id, &0, &other_merchant, &5_000_000, &10_000_000, &1793404800, &sig0);
+        fix.client.redeem(
+            &book_id,
+            &0,
+            &other_merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &sig0,
+        );
     }));
     assert!(redirect_res.is_err(), "Redirect attack signature must fail");
 }
@@ -460,9 +490,13 @@ fn test_balance_invariant_after_every_operation() {
     fix.mint(&owner, total_deposit);
 
     let denoms = vec![&fix.env, 10_000_000, 20_000_000, 30_000_000];
-    let book_id = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+    let book_id = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms,
+        &1793404800,
+    );
 
     let check_invariant = || {
         let contract_bal = fix.token_client.balance(&fix.contract_id);
@@ -491,20 +525,41 @@ fn test_balance_invariant_after_every_operation() {
 
     // 2. Invariant holds after partial redemption of note 0 (spending 6 of 10 XLM)
     let sig0 = fix.sign(book_id, 0, &merchant, 6_000_000, 10_000_000, 1793404800);
-    fix.client
-        .redeem(&book_id, &0, &merchant, &6_000_000, &10_000_000, &1793404800, &sig0);
+    fix.client.redeem(
+        &book_id,
+        &0,
+        &merchant,
+        &6_000_000,
+        &10_000_000,
+        &1793404800,
+        &sig0,
+    );
     check_invariant();
 
     // 3. Invariant holds after full redemption of note 1 (spending 20 of 20 XLM)
     let sig1 = fix.sign(book_id, 1, &merchant, 20_000_000, 20_000_000, 1793404800);
-    fix.client
-        .redeem(&book_id, &1, &merchant, &20_000_000, &20_000_000, &1793404800, &sig1);
+    fix.client.redeem(
+        &book_id,
+        &1,
+        &merchant,
+        &20_000_000,
+        &20_000_000,
+        &1793404800,
+        &sig1,
+    );
     check_invariant();
 
     // 4. Invariant holds after partial redemption of note 2 (spending 1 of 30 XLM)
     let sig2 = fix.sign(book_id, 2, &merchant, 1_000_000, 30_000_000, 1793404800);
-    fix.client
-        .redeem(&book_id, &2, &merchant, &1_000_000, &30_000_000, &1793404800, &sig2);
+    fix.client.redeem(
+        &book_id,
+        &2,
+        &merchant,
+        &1_000_000,
+        &30_000_000,
+        &1793404800,
+        &sig2,
+    );
     check_invariant();
 
     // 5. Invariant holds after failed operations (e.g. double-redeem or overspending)
@@ -524,9 +579,13 @@ fn test_balance_invariant_after_every_operation() {
     let owner2 = Address::generate(&fix.env);
     fix.mint(&owner2, 40_000_000);
     let denoms2 = vec![&fix.env, 15_000_000, 25_000_000];
-    let book_id_2 = fix
-        .client
-        .open_book(&owner2, &fix.token_address, &fix.voucher_key_bytes, &denoms2, &1793404800);
+    let book_id_2 = fix.client.open_book(
+        &owner2,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms2,
+        &1793404800,
+    );
 
     let check_multi_book_invariant = || {
         let contract_bal = fix.token_client.balance(&fix.contract_id);
@@ -554,8 +613,15 @@ fn test_balance_invariant_after_every_operation() {
 
     // Redeem note 0 in book 2 (spend 10 of 15 XLM)
     let sig_b2_0 = fix.sign(book_id_2, 0, &merchant, 10_000_000, 15_000_000, 1793404800);
-    fix.client
-        .redeem(&book_id_2, &0, &merchant, &10_000_000, &15_000_000, &1793404800, &sig_b2_0);
+    fix.client.redeem(
+        &book_id_2,
+        &0,
+        &merchant,
+        &10_000_000,
+        &15_000_000,
+        &1793404800,
+        &sig_b2_0,
+    );
     check_multi_book_invariant();
 
     // Final checks
@@ -577,18 +643,32 @@ fn test_forged_and_cross_note_signatures_rejected() {
 
     fix.mint(&owner, 50_000_000);
     let denoms = vec![&fix.env, 10_000_000, 20_000_000];
-    let book_id = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms, &1793404800);
+    let book_id = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms,
+        &1793404800,
+    );
 
     // 1. Completely forged signature (invalid Ed25519 signature)
     let forged_arr = [0x5au8; 64];
     let forged_sig = BytesN::from_array(&fix.env, &forged_arr);
     let res_forged = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        fix.client
-            .redeem(&book_id, &0, &merchant, &5_000_000, &10_000_000, &1793404800, &forged_sig);
+        fix.client.redeem(
+            &book_id,
+            &0,
+            &merchant,
+            &5_000_000,
+            &10_000_000,
+            &1793404800,
+            &forged_sig,
+        );
     }));
-    assert!(res_forged.is_err(), "Forged random signature must be rejected");
+    assert!(
+        res_forged.is_err(),
+        "Forged random signature must be rejected"
+    );
 
     // 2. Signature from an attacker's key (not the book's voucher key)
     let attacker_seed = [99u8; 32];
@@ -618,7 +698,10 @@ fn test_forged_and_cross_note_signatures_rejected() {
             &attacker_sig_bytes,
         );
     }));
-    assert!(res_attacker.is_err(), "Signature from unauthorized key must be rejected");
+    assert!(
+        res_attacker.is_err(),
+        "Signature from unauthorized key must be rejected"
+    );
 
     // 3. Valid signature for note 0 replayed against note 1
     let valid_sig_note0 = fix.sign(book_id, 0, &merchant, 5_000_000, 10_000_000, 1793404800);
@@ -633,14 +716,21 @@ fn test_forged_and_cross_note_signatures_rejected() {
             &valid_sig_note0,
         );
     }));
-    assert!(res_cross_note.is_err(), "Cross-note signature replay must be rejected");
+    assert!(
+        res_cross_note.is_err(),
+        "Cross-note signature replay must be rejected"
+    );
 
     // 4. Valid signature for book 1 replayed against book 2
     let denoms2 = vec![&fix.env, 10_000_000];
     fix.mint(&owner, 10_000_000);
-    let book_id_2 = fix
-        .client
-        .open_book(&owner, &fix.token_address, &fix.voucher_key_bytes, &denoms2, &1793404800);
+    let book_id_2 = fix.client.open_book(
+        &owner,
+        &fix.token_address,
+        &fix.voucher_key_bytes,
+        &denoms2,
+        &1793404800,
+    );
     let res_cross_book = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         fix.client.redeem(
             &book_id_2,
@@ -652,7 +742,10 @@ fn test_forged_and_cross_note_signatures_rejected() {
             &valid_sig_note0,
         );
     }));
-    assert!(res_cross_book.is_err(), "Cross-book signature replay must be rejected");
+    assert!(
+        res_cross_book.is_err(),
+        "Cross-book signature replay must be rejected"
+    );
 
     // 5. Valid signature redirected to attacker merchant
     let res_redirect = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -666,5 +759,8 @@ fn test_forged_and_cross_note_signatures_rejected() {
             &valid_sig_note0,
         );
     }));
-    assert!(res_redirect.is_err(), "Payee redirect signature replay must be rejected");
+    assert!(
+        res_redirect.is_err(),
+        "Payee redirect signature replay must be rejected"
+    );
 }
