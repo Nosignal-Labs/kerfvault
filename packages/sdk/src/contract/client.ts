@@ -1,17 +1,20 @@
 import {
   Account,
+  Address,
   Contract,
+  Keypair,
   TransactionBuilder,
   nativeToScVal,
   scValToNative,
   rpc,
+  xdr,
 } from "@stellar/stellar-sdk";
 import {
   type ClientConfig,
   type DeploymentFile,
   loadDeploymentConfig,
 } from "../config.js";
-import { bytesToHex } from "../voucher/encode.js";
+import { bytesToHex, hexToBytes } from "../voucher/encode.js";
 
 export type { ClientConfig };
 
@@ -28,7 +31,7 @@ export interface NoteView {
 export interface OpenBookParams {
   ownerSecret: string;
   tokenAddress: string;
-  voucherKey: string;
+  voucherKey: string | Uint8Array;
   denominations: bigint[];
   redeemDeadline: bigint;
 }
@@ -62,6 +65,33 @@ export interface BookView {
 // Dummy account used for stateless read simulations
 const SIMULATION_DUMMY_ACCOUNT =
   "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+/**
+ * Polls for transaction confirmation until SUCCESS or failure.
+ */
+export async function pollTransaction(
+  server: rpc.Server,
+  hash: string,
+  timeoutMs = 30000,
+  intervalMs = 1000
+): Promise<rpc.Api.GetSuccessfulTransactionResponse> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const res = await server.getTransaction(hash);
+    if (res.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      return res;
+    }
+    if (res.status === rpc.Api.GetTransactionStatus.FAILED) {
+      throw new Error(
+        `Transaction ${hash} failed: ${
+          res.resultXdr ? res.resultXdr.toXDR("base64") : "unknown error"
+        }`
+      );
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Transaction ${hash} timed out after ${timeoutMs}ms`);
+}
 
 export class KerfvaultClient {
   public readonly config: ClientConfig;
@@ -106,7 +136,9 @@ export class KerfvaultClient {
       throw new Error(`Failed to simulate get_book: ${sim.error}`);
     }
     if (!rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) {
-      throw new Error("Failed to simulate get_book: No simulation retval returned");
+      throw new Error(
+        "Failed to simulate get_book: No simulation retval returned"
+      );
     }
 
     const raw = scValToNative(sim.result.retval) as {
@@ -154,7 +186,9 @@ export class KerfvaultClient {
       throw new Error(`Failed to simulate get_note: ${sim.error}`);
     }
     if (!rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) {
-      throw new Error("Failed to simulate get_note: No simulation retval returned");
+      throw new Error(
+        "Failed to simulate get_note: No simulation retval returned"
+      );
     }
 
     const raw = scValToNative(sim.result.retval) as {
@@ -171,9 +205,56 @@ export class KerfvaultClient {
   /**
    * Opens a new book of voucher notes on-chain.
    */
-  async openBook(_params: OpenBookParams): Promise<bigint> {
-    // TODO: Build, sign with owner secret, and invoke open_book on Soroban contract via RPC
-    throw new Error("TODO: openBook contract invocation not yet implemented");
+  async openBook(params: OpenBookParams): Promise<bigint> {
+    const ownerKeypair = Keypair.fromSecret(params.ownerSecret);
+    const account = await this.server.getAccount(ownerKeypair.publicKey());
+    const contract = new Contract(this.config.contractId);
+
+    const voucherKeyBytes =
+      typeof params.voucherKey === "string"
+        ? hexToBytes(params.voucherKey)
+        : params.voucherKey;
+
+    const tx = new TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: this.config.networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          "open_book",
+          new Address(ownerKeypair.publicKey()).toScVal(),
+          new Address(params.tokenAddress).toScVal(),
+          nativeToScVal(voucherKeyBytes, { type: "bytes" }),
+          xdr.ScVal.scvVec(
+            params.denominations.map((d) =>
+              nativeToScVal(BigInt(d), { type: "i128" })
+            )
+          ),
+          nativeToScVal(BigInt(params.redeemDeadline), { type: "u64" })
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const preparedTx = await this.server.prepareTransaction(tx);
+    preparedTx.sign(ownerKeypair);
+
+    const sendRes = await this.server.sendTransaction(preparedTx);
+    if (sendRes.status === "ERROR") {
+      throw new Error(
+        `Failed to submit open_book transaction: ${
+          sendRes.errorResult?.toXDR("base64") ?? "Unknown send error"
+        }`
+      );
+    }
+
+    const txRes = await pollTransaction(this.server, sendRes.hash);
+    if (!txRes.returnValue) {
+      throw new Error("open_book transaction did not return a value");
+    }
+
+    const bookId = scValToNative(txRes.returnValue);
+    return BigInt(bookId);
   }
 
   /**
