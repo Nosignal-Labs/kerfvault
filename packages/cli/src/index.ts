@@ -1,3 +1,7 @@
+import { runSetup, type SetupOptions } from "./setup.js";
+
+export * from "./setup.js";
+
 export interface ParsedArgs {
   command?: string;
   options: Record<string, string | boolean>;
@@ -83,9 +87,19 @@ export async function runCli(
   }
 
   switch (parsed.command) {
-    case "setup":
-      stdout("setup command: ready for execution");
+    case "setup": {
+      const options: SetupOptions = {
+        keysFile: typeof parsed.options.keys === "string" ? parsed.options.keys : undefined,
+        deploymentFile:
+          typeof parsed.options.deployment === "string"
+            ? parsed.options.deployment
+            : undefined,
+        rpcUrl: typeof parsed.options.rpc === "string" ? parsed.options.rpc : undefined,
+        skipTrustline: Boolean(parsed.options["skip-trustline"]),
+      };
+      await runSetup(options, stdout);
       return 0;
+    }
     case "open-book":
       stdout("open-book command: ready for execution");
       return 0;

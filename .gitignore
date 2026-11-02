@@ -29,6 +29,9 @@ coverage/
 .env
 .env.*
 !.env.example
+.keys/
+*.keys.json
+.demo-keys.json
 
 # IDE & OS
 .vscode/
