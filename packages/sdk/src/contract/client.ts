@@ -44,7 +44,7 @@ export interface RedeemParams {
   amount: bigint;
   cap: bigint;
   acceptUntil: bigint;
-  signature: string;
+  signature: string | Uint8Array;
 }
 
 export interface ReclaimParams {
@@ -259,10 +259,63 @@ export class KerfvaultClient {
 
   /**
    * Submits a voucher for on-chain redemption.
+   * Returns the confirmed transaction hash.
    */
-  async redeem(_params: RedeemParams): Promise<void> {
-    // TODO: Build, sign with submitter secret, and invoke redeem on Soroban contract via RPC
-    throw new Error("TODO: redeem contract invocation not yet implemented");
+  async redeem(params: RedeemParams): Promise<string> {
+    if (!params.submitterSecret) {
+      throw new Error(
+        "submitterSecret is required to sign and submit redemption transaction"
+      );
+    }
+
+    const sigBytes =
+      typeof params.signature === "string"
+        ? hexToBytes(params.signature)
+        : params.signature;
+
+    if (sigBytes.length !== 64) {
+      throw new Error(
+        `Invalid signature length: expected 64 bytes, received ${sigBytes.length}`
+      );
+    }
+
+    const submitterKeypair = Keypair.fromSecret(params.submitterSecret);
+    const account = await this.server.getAccount(submitterKeypair.publicKey());
+    const contract = new Contract(this.config.contractId);
+
+    const tx = new TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: this.config.networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          "redeem",
+          nativeToScVal(BigInt(params.bookId), { type: "u64" }),
+          nativeToScVal(params.noteIndex, { type: "u32" }),
+          new Address(params.merchant).toScVal(),
+          nativeToScVal(BigInt(params.amount), { type: "i128" }),
+          nativeToScVal(BigInt(params.cap), { type: "i128" }),
+          nativeToScVal(BigInt(params.acceptUntil), { type: "u64" }),
+          nativeToScVal(sigBytes, { type: "bytes" })
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const preparedTx = await this.server.prepareTransaction(tx);
+    preparedTx.sign(submitterKeypair);
+
+    const sendRes = await this.server.sendTransaction(preparedTx);
+    if (sendRes.status === "ERROR") {
+      throw new Error(
+        `Failed to submit redeem transaction: ${
+          sendRes.errorResult?.toXDR("base64") ?? "Unknown send error"
+        }`
+      );
+    }
+
+    await pollTransaction(this.server, sendRes.hash);
+    return sendRes.hash;
   }
 
   /**
