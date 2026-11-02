@@ -1,8 +1,10 @@
-export interface ClientConfig {
-  contractId: string;
-  rpcUrl: string;
-  networkPassphrase: string;
-}
+import {
+  type ClientConfig,
+  type DeploymentFile,
+  loadDeploymentConfig,
+} from "../config.js";
+
+export type { ClientConfig };
 
 export interface OpenBookParams {
   ownerSecret: string;
@@ -42,6 +44,13 @@ export class KerfvaultClient {
 
   constructor(config: ClientConfig) {
     this.config = config;
+  }
+
+  /**
+   * Initializes a KerfvaultClient from a deployment file or parsed deployment configuration.
+   */
+  static fromDeployment(deployment: DeploymentFile | string): KerfvaultClient {
+    return new KerfvaultClient(loadDeploymentConfig(deployment));
   }
 
   /**
