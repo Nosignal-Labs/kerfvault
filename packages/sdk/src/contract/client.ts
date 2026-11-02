@@ -15,6 +15,7 @@ import {
   loadDeploymentConfig,
 } from "../config.js";
 import { bytesToHex, hexToBytes } from "../voucher/encode.js";
+import { parseContractError } from "./errors.js";
 
 export type { ClientConfig };
 
@@ -82,11 +83,12 @@ export async function pollTransaction(
       return res;
     }
     if (res.status === rpc.Api.GetTransactionStatus.FAILED) {
-      throw new Error(
-        `Transaction ${hash} failed: ${
-          res.resultXdr ? res.resultXdr.toXDR("base64") : "unknown error"
-        }`
-      );
+      const rawError = res.resultXdr
+        ? res.resultXdr.toXDR("base64")
+        : "unknown error";
+      const parsed = parseContractError(rawError);
+      if (parsed) throw parsed;
+      throw new Error(`Transaction ${hash} failed: ${rawError}`);
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -133,6 +135,8 @@ export class KerfvaultClient {
 
     const sim = await this.server.simulateTransaction(tx);
     if (rpc.Api.isSimulationError(sim)) {
+      const parsed = parseContractError(sim.error);
+      if (parsed) throw parsed;
       throw new Error(`Failed to simulate get_book: ${sim.error}`);
     }
     if (!rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) {
@@ -183,6 +187,8 @@ export class KerfvaultClient {
 
     const sim = await this.server.simulateTransaction(tx);
     if (rpc.Api.isSimulationError(sim)) {
+      const parsed = parseContractError(sim.error);
+      if (parsed) throw parsed;
       throw new Error(`Failed to simulate get_note: ${sim.error}`);
     }
     if (!rpc.Api.isSimulationSuccess(sim) || !sim.result?.retval) {
@@ -241,11 +247,11 @@ export class KerfvaultClient {
 
     const sendRes = await this.server.sendTransaction(preparedTx);
     if (sendRes.status === "ERROR") {
-      throw new Error(
-        `Failed to submit open_book transaction: ${
-          sendRes.errorResult?.toXDR("base64") ?? "Unknown send error"
-        }`
-      );
+      const raw =
+        sendRes.errorResult?.toXDR("base64") ?? "Unknown send error";
+      const parsed = parseContractError(raw);
+      if (parsed) throw parsed;
+      throw new Error(`Failed to submit open_book transaction: ${raw}`);
     }
 
     const txRes = await pollTransaction(this.server, sendRes.hash);
@@ -307,11 +313,11 @@ export class KerfvaultClient {
 
     const sendRes = await this.server.sendTransaction(preparedTx);
     if (sendRes.status === "ERROR") {
-      throw new Error(
-        `Failed to submit redeem transaction: ${
-          sendRes.errorResult?.toXDR("base64") ?? "Unknown send error"
-        }`
-      );
+      const raw =
+        sendRes.errorResult?.toXDR("base64") ?? "Unknown send error";
+      const parsed = parseContractError(raw);
+      if (parsed) throw parsed;
+      throw new Error(`Failed to submit redeem transaction: ${raw}`);
     }
 
     await pollTransaction(this.server, sendRes.hash);

@@ -69,7 +69,7 @@ describe("KerfvaultClient typed contract reads", () => {
   it("throws error when getBook simulation fails", async () => {
     const mockServer = {
       simulateTransaction: vi.fn().mockResolvedValue({
-        error: "HostError: Error(Contract, #1)",
+        error: "HostError: Resource limit exceeded",
       }),
     } as unknown as rpc.Server;
 
@@ -80,7 +80,7 @@ describe("KerfvaultClient typed contract reads", () => {
   it("throws error when getNote simulation fails", async () => {
     const mockServer = {
       simulateTransaction: vi.fn().mockResolvedValue({
-        error: "HostError: Error(Contract, #2)",
+        error: "HostError: Resource limit exceeded",
       }),
     } as unknown as rpc.Server;
 
