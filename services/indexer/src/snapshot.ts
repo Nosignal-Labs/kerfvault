@@ -1,3 +1,4 @@
+// TODO: Support incremental delta snapshots (RFC 7396 / JSON Patch) for low-bandwidth mobile merchant clients
 import type { RegistrySnapshot, RegistryBook, RegistryNote } from "@kerfvault/sdk";
 import type { Queryable } from "./db/migrate.js";
 import { DEFAULT_SYNC_KEY } from "./ingest.js";

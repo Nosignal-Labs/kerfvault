@@ -1,3 +1,5 @@
+// TODO: Implement historical ledger backfill via Stellar archive ingestion when startLedger is beyond RPC retention window
+// TODO: Implement reorg detection and rollback logic
 import { rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { Queryable } from "./db/migrate.js";
 import { upsertBook, upsertNote, markNoteRedeemed } from "./store.js";
