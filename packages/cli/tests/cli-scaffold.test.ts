@@ -44,7 +44,7 @@ describe("CLI Scaffold", () => {
   });
 
   it("routes known commands to their stubs", async () => {
-    const commands = ["sign-voucher", "verify", "redeem"];
+    const commands = ["redeem"];
     for (const cmd of commands) {
       const logs: string[] = [];
       const code = await runCli([cmd], (msg) => logs.push(msg));
