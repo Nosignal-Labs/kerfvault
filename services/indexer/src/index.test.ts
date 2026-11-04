@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleRequest, setDbClient } from "./index.js";
 import { buildRegistrySnapshot } from "./snapshot.js";
+import { getHealthStatus, type LatestLedgerProvider } from "./health.js";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Queryable } from "./db/migrate.js";
@@ -32,16 +33,52 @@ function createMockHttp(url: string, method = "GET"): {
   return { req, res, getResponse: () => ({ statusCode, headers, body }) };
 }
 
-describe("Indexer HTTP Service", () => {
-  it("responds 200 ok to GET /health", async () => {
+describe("Indexer HTTP Service & Health Endpoint", () => {
+  it("responds 200 ok to GET /health with ledger sequence and lag metrics", async () => {
+    const mockDb: Queryable = {
+      query: vi.fn(async <R = any>(text: string) => {
+        if (text.includes("SELECT last_ledger, cursor FROM sync_state")) {
+          return {
+            rows: [{ last_ledger: "1000", cursor: "cursor_health" }] as unknown as R[],
+          };
+        }
+        return { rows: [] as R[] };
+      }),
+    };
+
+    const mockRpc: LatestLedgerProvider = {
+      getLatestLedger: vi.fn(async () => ({ sequence: 1005 })),
+    };
+
     const { req, res, getResponse } = createMockHttp("/health");
-    await handleRequest(req, res);
+    await handleRequest(req, res, mockDb, mockRpc);
 
     const { statusCode, headers, body } = getResponse();
     expect(statusCode).toBe(200);
     expect(headers["Content-Type"]).toBe("application/json");
+
     const json = JSON.parse(body);
     expect(json.status).toBe("ok");
+    expect(json.latestLedgerProcessed).toBe(1000);
+    expect(json.latestRpcLedger).toBe(1005);
+    expect(json.lag).toBe(5);
+    expect(json.cursor).toBe("cursor_health");
+  });
+
+  it("calculates degraded health status when lag exceeds threshold", async () => {
+    const mockDb: Queryable = {
+      query: vi.fn(async <R = any>() => ({
+        rows: [{ last_ledger: "1000", cursor: "c" }] as unknown as R[],
+      })),
+    };
+
+    const laggingRpc: LatestLedgerProvider = {
+      getLatestLedger: vi.fn(async () => ({ sequence: 2000 })), // 1000 ledgers behind
+    };
+
+    const health = await getHealthStatus(mockDb, laggingRpc);
+    expect(health.status).toBe("degraded");
+    expect(health.lag).toBe(1000);
   });
 
   it("responds with fallback snapshot when no db connected", async () => {
@@ -106,7 +143,6 @@ describe("Indexer HTTP Service", () => {
       status: "Open",
     });
 
-    // Test GET /registry via HTTP handler with mockDb injected
     const { req, res, getResponse } = createMockHttp("/registry");
     await handleRequest(req, res, mockDb);
 

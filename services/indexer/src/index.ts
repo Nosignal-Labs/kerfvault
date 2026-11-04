@@ -1,33 +1,43 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { RegistrySnapshot } from "@kerfvault/sdk";
 import { buildRegistrySnapshot } from "./snapshot.js";
+import { getHealthStatus, type LatestLedgerProvider } from "./health.js";
 import type { Queryable } from "./db/migrate.js";
 
 export * from "./ingest.js";
 export * from "./store.js";
 export * from "./snapshot.js";
+export * from "./health.js";
 export * from "./db/index.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4001;
 
 let currentDbClient: Queryable | null = null;
+let currentRpcClient: LatestLedgerProvider | null = null;
 
 export function setDbClient(client: Queryable | null): void {
   currentDbClient = client;
 }
 
+export function setRpcClient(client: LatestLedgerProvider | null): void {
+  currentRpcClient = client;
+}
+
 export async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  dbClient?: Queryable
+  dbClient?: Queryable,
+  rpcClient?: LatestLedgerProvider
 ): Promise<void> {
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
   const client = dbClient ?? currentDbClient;
+  const ledgerProvider = rpcClient ?? currentRpcClient;
 
   if (method === "GET" && url === "/health") {
+    const health = await getHealthStatus(client, ledgerProvider);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", timestamp: new Date().toISOString() }));
+    res.end(JSON.stringify(health, null, 2));
     return;
   }
 
