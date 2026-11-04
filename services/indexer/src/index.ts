@@ -1,15 +1,29 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { RegistrySnapshot } from "@kerfvault/sdk";
+import { buildRegistrySnapshot } from "./snapshot.js";
+import type { Queryable } from "./db/migrate.js";
 
 export * from "./ingest.js";
 export * from "./store.js";
+export * from "./snapshot.js";
 export * from "./db/index.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4001;
 
-export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
+let currentDbClient: Queryable | null = null;
+
+export function setDbClient(client: Queryable | null): void {
+  currentDbClient = client;
+}
+
+export async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  dbClient?: Queryable
+): Promise<void> {
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
+  const client = dbClient ?? currentDbClient;
 
   if (method === "GET" && url === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -18,30 +32,36 @@ export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 
   if (method === "GET" && url === "/registry") {
-    // Return stub snapshot conforming to RegistrySnapshot schema
-    const stubSnapshot: RegistrySnapshot = {
+    if (client) {
+      try {
+        const snapshot = await buildRegistrySnapshot(client);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(snapshot, null, 2));
+        return;
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: "Failed to build registry snapshot",
+            details: (err as Error).message,
+          })
+        );
+        return;
+      }
+    }
+
+    const fallbackSnapshot: RegistrySnapshot = {
       version: 1,
-      contractId: process.env.KERFVAULT_CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      ledgerSequence: 1000000,
+      contractId:
+        process.env.KERFVAULT_CONTRACT_ID ??
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      ledgerSequence: 0,
       snapshotTimestamp: Math.floor(Date.now() / 1000),
-      books: {
-        "101": {
-          bookId: "101",
-          owner: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
-          token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-          voucherKey: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-          redeemDeadline: "1793404800",
-          freeBalance: "0",
-          notes: [
-            { index: 0, denomination: "10000000", status: "Open" },
-            { index: 1, denomination: "20000000", status: "Open" },
-          ],
-        },
-      },
+      books: {},
     };
 
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(stubSnapshot, null, 2));
+    res.end(JSON.stringify(fallbackSnapshot, null, 2));
     return;
   }
 
@@ -49,7 +69,9 @@ export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ error: "Not Found" }));
 }
 
-export const server = createServer(handleRequest);
+export const server = createServer((req, res) => {
+  void handleRequest(req, res);
+});
 
 if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.js")) {
   server.listen(PORT, () => {
