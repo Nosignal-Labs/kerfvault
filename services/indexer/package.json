@@ -14,13 +14,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kerfvault/sdk": "workspace:*"
+    "@kerfvault/sdk": "workspace:*",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^3.0.7"
   }
 }
-
