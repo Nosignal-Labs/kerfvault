@@ -5,9 +5,16 @@ import {
   type OpenBookCliOptions,
   type ShowBookCliOptions,
 } from "./book.js";
+import {
+  runSignVoucher,
+  runVerifyVoucher,
+  type SignVoucherCliOptions,
+  type VerifyCliOptions,
+} from "./voucher.js";
 
 export * from "./setup.js";
 export * from "./book.js";
+export * from "./voucher.js";
 
 export interface ParsedArgs {
   command?: string;
@@ -141,12 +148,82 @@ export async function runCli(
       await runOpenBook(options, stdout);
       return 0;
     }
-    case "sign-voucher":
-      stdout("sign-voucher command: ready for execution");
+    case "sign-voucher": {
+      const options: SignVoucherCliOptions = {
+        bookId:
+          typeof parsed.options.book === "string"
+            ? parsed.options.book
+            : undefined,
+        noteIndex:
+          typeof parsed.options.note === "string"
+            ? parsed.options.note
+            : undefined,
+        merchant:
+          typeof parsed.options.merchant === "string"
+            ? parsed.options.merchant
+            : undefined,
+        amount:
+          typeof parsed.options.amount === "string"
+            ? parsed.options.amount
+            : undefined,
+        cap:
+          typeof parsed.options.cap === "string"
+            ? parsed.options.cap
+            : undefined,
+        acceptUntil:
+          typeof parsed.options["accept-until"] === "string"
+            ? (parsed.options["accept-until"] as string)
+            : undefined,
+        voucherSecret:
+          typeof parsed.options["voucher-secret"] === "string"
+            ? (parsed.options["voucher-secret"] as string)
+            : undefined,
+        contractId:
+          typeof parsed.options["contract-id"] === "string"
+            ? (parsed.options["contract-id"] as string)
+            : undefined,
+        keysFile:
+          typeof parsed.options.keys === "string"
+            ? parsed.options.keys
+            : undefined,
+        deploymentFile:
+          typeof parsed.options.deployment === "string"
+            ? parsed.options.deployment
+            : undefined,
+      };
+      await runSignVoucher(options, stdout);
       return 0;
-    case "verify":
-      stdout("verify command: ready for execution");
-      return 0;
+    }
+    case "verify": {
+      const options: VerifyCliOptions = {
+        voucher:
+          typeof parsed.options.voucher === "string"
+            ? parsed.options.voucher
+            : parsed.positionals[0],
+        voucherKey:
+          typeof parsed.options["voucher-key"] === "string"
+            ? (parsed.options["voucher-key"] as string)
+            : undefined,
+        expectedContractId:
+          typeof parsed.options["contract-id"] === "string"
+            ? (parsed.options["contract-id"] as string)
+            : undefined,
+        merchantAddress:
+          typeof parsed.options.merchant === "string"
+            ? parsed.options.merchant
+            : undefined,
+        keysFile:
+          typeof parsed.options.keys === "string"
+            ? parsed.options.keys
+            : undefined,
+        deploymentFile:
+          typeof parsed.options.deployment === "string"
+            ? parsed.options.deployment
+            : undefined,
+      };
+      const ok = await runVerifyVoucher(options, stdout);
+      return ok ? 0 : 1;
+    }
     case "redeem":
       stdout("redeem command: ready for execution");
       return 0;
