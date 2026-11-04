@@ -28,13 +28,27 @@ export interface SetupOptions {
 
 export async function fundWithFriendbot(
   publicKey: string,
-  friendbotUrl = "https://friendbot.stellar.org"
+  friendbotUrl = "https://friendbot.stellar.org",
+  maxRetries = 3
 ): Promise<void> {
   const url = `${friendbotUrl}?addr=${encodeURIComponent(publicKey)}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Friendbot funding failed for ${publicKey}: ${res.status} ${text}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const text = await res.text();
+        if (text.includes("already funded")) {
+          return;
+        }
+        throw new Error(
+          `Friendbot funding failed for ${publicKey}: ${res.status} ${text}`
+        );
+      }
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
 }
 

@@ -64,7 +64,10 @@ export async function runRedeemVoucher(
   const voucher = decodeVoucher(encoded);
   const submitterKeypair = Keypair.fromSecret(submitterSecret);
   const client =
-    clientOverride || KerfvaultClient.fromDeployment(deploymentPath);
+    clientOverride ||
+    KerfvaultClient.fromDeployment(
+      JSON.parse(fs.readFileSync(deploymentPath, "utf8"))
+    );
 
   stdout("==> Submitting voucher for on-chain contract redemption...");
   stdout(`Submitter:       ${submitterKeypair.publicKey()}`);
