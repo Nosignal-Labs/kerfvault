@@ -11,10 +11,12 @@ import {
   type SignVoucherCliOptions,
   type VerifyCliOptions,
 } from "./voucher.js";
+import { runRedeemVoucher, type RedeemCliOptions } from "./redeem.js";
 
 export * from "./setup.js";
 export * from "./book.js";
 export * from "./voucher.js";
+export * from "./redeem.js";
 
 export interface ParsedArgs {
   command?: string;
@@ -224,9 +226,28 @@ export async function runCli(
       const ok = await runVerifyVoucher(options, stdout);
       return ok ? 0 : 1;
     }
-    case "redeem":
-      stdout("redeem command: ready for execution");
+    case "redeem": {
+      const options: RedeemCliOptions = {
+        voucher:
+          typeof parsed.options.voucher === "string"
+            ? parsed.options.voucher
+            : parsed.positionals[0],
+        submitterSecret:
+          typeof parsed.options.submitter === "string"
+            ? parsed.options.submitter
+            : undefined,
+        keysFile:
+          typeof parsed.options.keys === "string"
+            ? parsed.options.keys
+            : undefined,
+        deploymentFile:
+          typeof parsed.options.deployment === "string"
+            ? parsed.options.deployment
+            : undefined,
+      };
+      await runRedeemVoucher(options, stdout);
       return 0;
+    }
     case "show-book": {
       const options: ShowBookCliOptions = {
         bookId:
