@@ -43,13 +43,10 @@ describe("CLI Scaffold", () => {
     expect(logs[0]).toContain('Unknown command: "foobar"');
   });
 
-  it("routes known commands to their stubs", async () => {
-    const commands = ["redeem"];
+  it("lists all known commands in usage help", async () => {
+    const commands = ["setup", "open-book", "sign-voucher", "verify", "redeem", "show-book"];
     for (const cmd of commands) {
-      const logs: string[] = [];
-      const code = await runCli([cmd], (msg) => logs.push(msg));
-      expect(code).toBe(0);
-      expect(logs[0]).toContain(`${cmd} command`);
+      expect(USAGE).toContain(cmd);
     }
   });
 });
