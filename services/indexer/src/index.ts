@@ -1,6 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { RegistrySnapshot } from "@kerfvault/sdk";
 
+export * from "./ingest.js";
+export * from "./db/index.js";
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4001;
 
 export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
