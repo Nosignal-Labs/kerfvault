@@ -1,6 +1,13 @@
 import { runSetup, type SetupOptions } from "./setup.js";
+import {
+  runOpenBook,
+  runShowBook,
+  type OpenBookCliOptions,
+  type ShowBookCliOptions,
+} from "./book.js";
 
 export * from "./setup.js";
+export * from "./book.js";
 
 export interface ParsedArgs {
   command?: string;
@@ -100,9 +107,40 @@ export async function runCli(
       await runSetup(options, stdout);
       return 0;
     }
-    case "open-book":
-      stdout("open-book command: ready for execution");
+    case "open-book": {
+      const options: OpenBookCliOptions = {
+        ownerSecret:
+          typeof parsed.options.owner === "string"
+            ? parsed.options.owner
+            : undefined,
+        voucherKey:
+          typeof parsed.options["voucher-key"] === "string"
+            ? (parsed.options["voucher-key"] as string)
+            : undefined,
+        tokenAddress:
+          typeof parsed.options.token === "string"
+            ? parsed.options.token
+            : undefined,
+        denominations:
+          typeof parsed.options.denoms === "string"
+            ? parsed.options.denoms
+            : undefined,
+        redeemDeadline:
+          typeof parsed.options.deadline === "string"
+            ? parsed.options.deadline
+            : undefined,
+        keysFile:
+          typeof parsed.options.keys === "string"
+            ? parsed.options.keys
+            : undefined,
+        deploymentFile:
+          typeof parsed.options.deployment === "string"
+            ? parsed.options.deployment
+            : undefined,
+      };
+      await runOpenBook(options, stdout);
       return 0;
+    }
     case "sign-voucher":
       stdout("sign-voucher command: ready for execution");
       return 0;
@@ -112,9 +150,20 @@ export async function runCli(
     case "redeem":
       stdout("redeem command: ready for execution");
       return 0;
-    case "show-book":
-      stdout("show-book command: ready for execution");
+    case "show-book": {
+      const options: ShowBookCliOptions = {
+        bookId:
+          typeof parsed.options.book === "string"
+            ? parsed.options.book
+            : parsed.positionals[0],
+        deploymentFile:
+          typeof parsed.options.deployment === "string"
+            ? parsed.options.deployment
+            : undefined,
+      };
+      await runShowBook(options, stdout);
       return 0;
+    }
     default:
       stdout(`Unknown command: "${parsed.command}". Run "kerfvault --help" for available commands.`);
       return 1;
