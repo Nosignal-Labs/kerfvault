@@ -59,7 +59,10 @@ export async function runOpenBook(
   }
 
   const client =
-    clientOverride || KerfvaultClient.fromDeployment(deploymentPath);
+    clientOverride ||
+    KerfvaultClient.fromDeployment(
+      JSON.parse(fs.readFileSync(deploymentPath, "utf8"))
+    );
 
   let tokenAddress = options.tokenAddress;
   if (!tokenAddress) {
@@ -167,7 +170,10 @@ export async function runShowBook(
 
   const bookId = BigInt(bookIdStr || "1");
   const client =
-    clientOverride || KerfvaultClient.fromDeployment(deploymentPath);
+    clientOverride ||
+    KerfvaultClient.fromDeployment(
+      JSON.parse(fs.readFileSync(deploymentPath, "utf8"))
+    );
 
   stdout(`==> Querying book #${bookId} from contract storage...`);
   const book = await client.getBook(bookId);
