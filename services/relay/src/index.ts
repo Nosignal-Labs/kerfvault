@@ -4,15 +4,60 @@ import { checkRateLimit } from "./rateLimit.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
 
-export const RedeemRequestSchema = z.object({
-  bookId: z.union([z.string(), z.number()]),
-  noteIndex: z.number().int().nonnegative(),
-  merchant: z.string().min(50).max(60),
-  amount: z.string(),
-  cap: z.string(),
-  acceptUntil: z.number().int().positive(),
-  signature: z.string().min(64),
-});
+/**
+ * Maximum request body size capped at 16 KB (16,384 bytes).
+ */
+export const MAX_PAYLOAD_BYTES = 16 * 1024;
+
+/**
+ * Regex for standard 56-character Stellar public address starting with 'G'.
+ */
+const STELLAR_ACCOUNT_REGEX = /^G[A-Z2-7]{55}$/;
+
+/**
+ * Strict schema for incoming structured voucher redemption requests.
+ * Rejects raw XDR or unrecognized transaction fields.
+ */
+export const RedeemRequestSchema = z
+  .object({
+    bookId: z.union([
+      z.string().regex(/^\d+$/, "bookId must be a positive integer"),
+      z.number().int().positive(),
+    ]),
+    noteIndex: z.number().int().min(0).max(65535),
+    merchant: z
+      .string()
+      .regex(STELLAR_ACCOUNT_REGEX, "merchant must be a valid 56-character Stellar G-address"),
+    amount: z
+      .string()
+      .regex(/^[1-9]\d*$/, "amount must be a positive integer in stroops"),
+    cap: z
+      .string()
+      .regex(/^[1-9]\d*$/, "cap must be a positive integer in stroops"),
+    acceptUntil: z.number().int().positive(),
+    signature: z
+      .string()
+      .refine(
+        (val) =>
+          /^[0-9a-fA-F]{128}$/.test(val) ||
+          (val.length === 88 && /^[A-Za-z0-9+/=]+$/.test(val)),
+        "signature must be a 64-byte Ed25519 signature in hex (128 characters) or base64"
+      ),
+  })
+  .strict()
+  .refine(
+    (data) => {
+      try {
+        return BigInt(data.amount) <= BigInt(data.cap);
+      } catch {
+        return false;
+      }
+    },
+    {
+      message: "Redemption amount cannot exceed signed cap",
+      path: ["amount"],
+    }
+  );
 
 export type RedeemRequestBody = z.infer<typeof RedeemRequestSchema>;
 
@@ -36,11 +81,29 @@ export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     }
 
     let rawBody = "";
+    let bodyBytes = 0;
+    let exceededSize = false;
+
     req.on("data", (chunk: Buffer) => {
+      if (exceededSize) return;
+      bodyBytes += chunk.length;
+      if (bodyBytes > MAX_PAYLOAD_BYTES) {
+        exceededSize = true;
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: "Payload Too Large: request body exceeds 16KB limit",
+          })
+        );
+        req.destroy();
+        return;
+      }
       rawBody += chunk.toString("utf-8");
     });
 
     req.on("end", () => {
+      if (exceededSize) return;
+
       try {
         const parsed = JSON.parse(rawBody || "{}");
         const validation = RedeemRequestSchema.safeParse(parsed);
@@ -56,12 +119,13 @@ export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
           return;
         }
 
-        // Return 501 Not Implemented stub
+        // Return 501 Not Implemented stub (to be implemented in S4-08/S4-10)
         res.writeHead(501, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             status: "Not Implemented",
-            message: "TODO: On-chain redemption transaction submission will be implemented in Wave 4",
+            message: "Redeem request accepted and validated. Transaction submission will be implemented in subsequent steps.",
+            validated: validation.data,
           })
         );
       } catch {
@@ -83,4 +147,3 @@ if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.js")) {
     console.log(`[relay] Redemption relay service listening on port ${PORT}`);
   });
 }
-
