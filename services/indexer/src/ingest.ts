@@ -1,5 +1,6 @@
 import { rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { Queryable } from "./db/migrate.js";
+import { upsertBook, upsertNote, markNoteRedeemed } from "./store.js";
 
 export const DEFAULT_SYNC_KEY = "kerfvault_events";
 
@@ -47,6 +48,22 @@ export interface SorobanEventsResponse {
 
 export interface RpcEventsClient {
   getEvents: (request: any) => Promise<SorobanEventsResponse>;
+}
+
+export interface ContractReader {
+  getBook(bookId: bigint): Promise<{
+    bookId: bigint;
+    owner: string;
+    token: string;
+    voucherKey: string;
+    redeemDeadline: bigint;
+    freeBalance: bigint;
+    noteCount: number;
+  }>;
+  getNote(bookId: bigint, noteIndex: number): Promise<{
+    denomination: bigint;
+    state: number;
+  }>;
 }
 
 /**
@@ -127,7 +144,6 @@ export function parseEventData(rawVal: any): any {
   if (rawVal == null) return null;
   try {
     if (typeof rawVal === "string") {
-      // Try base64 XDR ScVal decode
       try {
         const valXdr = xdr.ScVal.fromXDR(rawVal, "base64");
         return scValToNative(valXdr);
@@ -156,13 +172,112 @@ export function extractTopicName(topics: any[]): string {
 }
 
 /**
+ * Idempotently processes a contract lifecycle event (opened or redeemed) into structured database tables.
+ */
+export async function processContractEvent(
+  client: Queryable,
+  item: SorobanEventItem,
+  contractReader?: ContractReader
+): Promise<void> {
+  const topic = extractTopicName(item.topic);
+  const parsedData = parseEventData(item.value);
+
+  let bookId: bigint | undefined;
+  if (item.topic && item.topic.length > 1) {
+    const rawBookId = parseEventData(item.topic[1]);
+    if (rawBookId != null) {
+      bookId = BigInt(rawBookId.toString());
+    }
+  }
+
+  if (topic === "opened" && bookId != null) {
+    if (contractReader) {
+      const bookView = await contractReader.getBook(bookId);
+      await upsertBook(client, {
+        bookId,
+        contractId: item.contractId,
+        owner: bookView.owner,
+        token: bookView.token,
+        voucherKey: bookView.voucherKey,
+        redeemDeadline: bookView.redeemDeadline,
+        freeBalance: bookView.freeBalance,
+        createdLedger: BigInt(item.ledger),
+      });
+
+      for (let i = 0; i < bookView.noteCount; i++) {
+        const noteView = await contractReader.getNote(bookId, i);
+        await upsertNote(client, {
+          bookId,
+          noteIndex: i,
+          denomination: noteView.denomination,
+          state: noteView.state === 1 ? "Redeemed" : "Open",
+        });
+      }
+    } else if (parsedData && typeof parsedData === "object") {
+      const owner = parsedData.owner ?? (Array.isArray(parsedData) ? parsedData[0] : "unknown");
+      const token = parsedData.token ?? (Array.isArray(parsedData) ? parsedData[1] : "unknown");
+      const voucherKey = parsedData.voucherKey ?? "00".repeat(32);
+      const redeemDeadline = BigInt(parsedData.redeemDeadline ?? 0);
+      const freeBalance = BigInt(parsedData.freeBalance ?? 0);
+
+      await upsertBook(client, {
+        bookId,
+        contractId: item.contractId,
+        owner: String(owner),
+        token: String(token),
+        voucherKey: String(voucherKey),
+        redeemDeadline,
+        freeBalance,
+        createdLedger: BigInt(item.ledger),
+      });
+
+      if (Array.isArray(parsedData.notes)) {
+        for (const n of parsedData.notes) {
+          await upsertNote(client, {
+            bookId,
+            noteIndex: n.index ?? 0,
+            denomination: BigInt(n.denomination ?? 0),
+            state: n.state ?? "Open",
+          });
+        }
+      }
+    }
+  } else if (topic === "redeemed" && bookId != null) {
+    let noteIndex = 0;
+    let merchant = "";
+    let amount = 0n;
+
+    if (Array.isArray(parsedData)) {
+      noteIndex = Number(parsedData[0]);
+      merchant = String(parsedData[1]);
+      amount = BigInt(parsedData[2]);
+    } else if (parsedData && typeof parsedData === "object") {
+      noteIndex = Number(parsedData.noteIndex ?? 0);
+      merchant = String(parsedData.merchant ?? "");
+      amount = BigInt(parsedData.amount ?? 0);
+    }
+
+    if (merchant && amount > 0n) {
+      await markNoteRedeemed(client, {
+        bookId,
+        noteIndex,
+        merchant,
+        amount,
+        ledger: BigInt(item.ledger),
+      });
+    }
+  }
+}
+
+/**
  * Polls Soroban RPC getEvents once using stored or provided cursor, records raw events,
- * and updates sync_state.
+ * idempotently updates books/notes tables, and advances sync_state.
  */
 export async function pollEventsOnce(
   client: Queryable,
   rpcClient: RpcEventsClient,
-  config: IngestConfig
+  config: IngestConfig,
+  contractReader?: ContractReader
 ): Promise<{
   eventsProcessed: number;
   lastLedger: number;
@@ -226,6 +341,8 @@ export async function pollEventsOnce(
       data: parsedData,
     });
 
+    await processContractEvent(client, item, contractReader);
+
     if (item.ledger > maxLedger) {
       maxLedger = item.ledger;
     }
@@ -256,7 +373,7 @@ export async function startEventIngestion(
   client: Queryable,
   config: IngestConfig,
   customRpcClient?: RpcEventsClient,
-  options?: { signal?: AbortSignal; once?: boolean }
+  options?: { signal?: AbortSignal; once?: boolean; contractReader?: ContractReader }
 ): Promise<void> {
   const rpcClient: RpcEventsClient =
     customRpcClient ??
@@ -272,7 +389,7 @@ export async function startEventIngestion(
     }
 
     try {
-      await pollEventsOnce(client, rpcClient, config);
+      await pollEventsOnce(client, rpcClient, config, options?.contractReader);
     } catch (err) {
       console.error("[indexer:ingest] Error during event poll cycle:", err);
     }

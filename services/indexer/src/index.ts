@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { RegistrySnapshot } from "@kerfvault/sdk";
 
 export * from "./ingest.js";
+export * from "./store.js";
 export * from "./db/index.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4001;
@@ -55,4 +56,3 @@ if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.js")) {
     console.log(`[indexer] Registry service listening on port ${PORT}`);
   });
 }
-
