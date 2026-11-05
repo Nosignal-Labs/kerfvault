@@ -3,10 +3,14 @@ import { z } from "zod";
 import { checkRateLimit } from "./rateLimit.js";
 import { buildRedeemTransaction } from "./tx.js";
 import { submitRedeemTransaction, type SubmitRedeemConfig } from "./submit.js";
+import { getRedemptionStatus, TX_HASH_REGEX, type RelayStatusConfig } from "./status.js";
 
 export * from "./rateLimit.js";
 export * from "./tx.js";
 export * from "./submit.js";
+export * from "./status.js";
+
+export type RelayServerConfig = SubmitRedeemConfig & RelayStatusConfig;
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
 
@@ -67,22 +71,51 @@ export const RedeemRequestSchema = z
 
 export type RedeemRequestBody = z.infer<typeof RedeemRequestSchema>;
 
-export function handleRequest(
+export async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  config?: SubmitRedeemConfig
-): void {
+  config?: RelayServerConfig
+): Promise<void> {
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
   const clientIp = req.socket.remoteAddress ?? "127.0.0.1";
+  const pathname = url.split("?")[0];
 
-  if (method === "GET" && url === "/health") {
+  if (method === "GET" && pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", timestamp: new Date().toISOString() }));
     return;
   }
 
-  if (method === "POST" && url === "/redeem") {
+  if (method === "GET" && pathname.startsWith("/redeem/")) {
+    const hash = pathname.slice("/redeem/".length);
+    if (!TX_HASH_REGEX.test(hash)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "Invalid transaction hash: expected 64-character hex string",
+        })
+      );
+      return;
+    }
+
+    try {
+      const statusRes = await getRedemptionStatus(hash, config);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(statusRes));
+    } catch (statusErr) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "Failed to look up redemption status",
+          details: (statusErr as Error).message,
+        })
+      );
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/redeem") {
     const rateLimit = checkRateLimit(clientIp);
     if (!rateLimit.allowed) {
       res.writeHead(429, { "Content-Type": "application/json" });
@@ -156,8 +189,10 @@ export function handleRequest(
   res.end(JSON.stringify({ error: "Not Found" }));
 }
 
-export function createRelayServer(config?: SubmitRedeemConfig) {
-  return createServer((req, res) => handleRequest(req, res, config));
+export function createRelayServer(config?: RelayServerConfig) {
+  return createServer((req, res) => {
+    void handleRequest(req, res, config);
+  });
 }
 
 export const server = createRelayServer();
