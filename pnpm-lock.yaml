@@ -333,6 +333,9 @@ importers:
       '@kerfvault/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@stellar/stellar-sdk':
+        specifier: ^17.4.0
+        version: 17.4.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       zod:
         specifier: ^3.24.2
         version: 3.25.76

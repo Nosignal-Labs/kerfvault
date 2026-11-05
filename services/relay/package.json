@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@kerfvault/sdk": "workspace:*",
+    "@stellar/stellar-sdk": "^17.4.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -24,4 +25,3 @@
     "vitest": "^3.0.7"
   }
 }
-
