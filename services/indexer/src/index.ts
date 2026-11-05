@@ -3,12 +3,19 @@ import type { RegistrySnapshot } from "@kerfvault/sdk";
 import { buildRegistrySnapshot } from "./snapshot.js";
 import { getHealthStatus, type LatestLedgerProvider } from "./health.js";
 import type { Queryable } from "./db/migrate.js";
+import { handleCors, type CorsOptions } from "./cors.js";
 
 export * from "./ingest.js";
 export * from "./store.js";
 export * from "./snapshot.js";
 export * from "./health.js";
 export * from "./db/index.js";
+export * from "./cors.js";
+
+export interface IndexerServerConfig extends CorsOptions {
+  dbClient?: Queryable;
+  rpcClient?: LatestLedgerProvider;
+}
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4001;
 
@@ -27,8 +34,13 @@ export async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   dbClient?: Queryable,
-  rpcClient?: LatestLedgerProvider
+  rpcClient?: LatestLedgerProvider,
+  config?: IndexerServerConfig
 ): Promise<void> {
+  if (handleCors(req, res, { allowedOrigins: config?.allowedOrigins })) {
+    return;
+  }
+
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
   const client = dbClient ?? currentDbClient;

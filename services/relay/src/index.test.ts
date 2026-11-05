@@ -12,11 +12,12 @@ function mockReqRes(
   method: string,
   url: string,
   payload?: object | string,
-  options?: { rawString?: boolean; config?: RelayServerConfig; remoteIp?: string }
+  options?: { rawString?: boolean; config?: RelayServerConfig; remoteIp?: string; origin?: string }
 ) {
   const req = Object.assign(new EventEmitter(), {
     url,
     method,
+    headers: options?.origin ? { origin: options.origin } : {},
     socket: {
       remoteAddress: options?.remoteIp ?? `127.0.0.${Math.floor(Math.random() * 200) + 10}`,
     },
@@ -38,7 +39,11 @@ function mockReqRes(
       },
       writeHead(code: number, h?: Record<string, string>) {
         statusCode = code;
-        if (h) Object.assign(headers, h);
+        if (h) {
+          for (const [k, v] of Object.entries(h)) {
+            headers[k.toLowerCase()] = v;
+          }
+        }
       },
       end(chunk: string) {
         body = chunk;
@@ -214,6 +219,34 @@ describe("Relay Request Validation & Payload Caps", () => {
     };
     const res = await mockReqRes("POST", "/redeem", invalid);
     expect(res.status).toBe(400);
+  });
+
+  describe("CORS Handling in Relay", () => {
+    it("allows requests from configured origins with CORS headers", async () => {
+      const res = await mockReqRes("GET", "/health", undefined, {
+        origin: "http://localhost:3000",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    });
+
+    it("handles OPTIONS preflight for allowed origin with 204", async () => {
+      const res = await mockReqRes("OPTIONS", "/redeem", undefined, {
+        origin: "http://localhost:3001",
+      });
+      expect(res.status).toBe(204);
+      expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3001");
+    });
+
+    it("rejects requests from disallowed origins with 403 Forbidden", async () => {
+      const res = await mockReqRes("GET", "/health", undefined, {
+        origin: "https://evil.example.com",
+      });
+      expect(res.status).toBe(403);
+      expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+      const json = JSON.parse(res.body);
+      expect(json.error).toContain("Forbidden");
+    });
   });
 
   describe("Demo Faucet Endpoint", () => {
