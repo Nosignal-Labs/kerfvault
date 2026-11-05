@@ -7,13 +7,21 @@ import {
 import { buildRedeemTransaction } from "./tx.js";
 import { submitRedeemTransaction, type SubmitRedeemConfig } from "./submit.js";
 import { getRedemptionStatus, TX_HASH_REGEX, type RelayStatusConfig } from "./status.js";
+import {
+  requestDemoFaucet,
+  FaucetRequestSchema,
+  type FaucetConfig,
+} from "./faucet.js";
 
 export * from "./rateLimit.js";
 export * from "./tx.js";
 export * from "./submit.js";
 export * from "./status.js";
+export * from "./faucet.js";
 
-export type RelayServerConfig = SubmitRedeemConfig & RelayStatusConfig;
+export type RelayServerConfig = SubmitRedeemConfig &
+  RelayStatusConfig &
+  FaucetConfig;
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
 
@@ -115,6 +123,100 @@ export async function handleRequest(
         })
       );
     }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/demo/faucet") {
+    const isDemoMode =
+      config?.demoMode ??
+      (process.env.DEMO_MODE === "true" || process.env.DEMO_MODE === "1");
+
+    if (!isDemoMode) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "Demo faucet is disabled (DEMO_MODE is not active)",
+        })
+      );
+      return;
+    }
+
+    const rateLimit = checkRateLimit(clientIp);
+    res.setHeader("X-RateLimit-Limit", DEFAULT_RATE_LIMIT_MAX_REQUESTS.toString());
+    res.setHeader("X-RateLimit-Remaining", rateLimit.remaining.toString());
+    res.setHeader("X-RateLimit-Reset", Math.ceil(rateLimit.resetTime / 1000).toString());
+
+    if (!rateLimit.allowed) {
+      if (rateLimit.retryAfterSeconds) {
+        res.setHeader("Retry-After", rateLimit.retryAfterSeconds.toString());
+      }
+      res.writeHead(429, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "Rate limit exceeded. Try again later.",
+          retryAfter: rateLimit.retryAfterSeconds,
+        })
+      );
+      return;
+    }
+
+    let rawBody = "";
+    let bodyBytes = 0;
+    let exceededSize = false;
+
+    req.on("data", (chunk: Buffer) => {
+      if (exceededSize) return;
+      bodyBytes += chunk.length;
+      if (bodyBytes > MAX_PAYLOAD_BYTES) {
+        exceededSize = true;
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: "Payload Too Large: request body exceeds 16KB limit",
+          })
+        );
+        req.destroy();
+        return;
+      }
+      rawBody += chunk.toString("utf-8");
+    });
+
+    req.on("end", async () => {
+      if (exceededSize) return;
+
+      try {
+        const parsed = JSON.parse(rawBody || "{}");
+        const validation = FaucetRequestSchema.safeParse(parsed);
+
+        if (!validation.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "Invalid request payload",
+              issues: validation.error.issues,
+            })
+          );
+          return;
+        }
+
+        try {
+          const result = await requestDemoFaucet(validation.data, config);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (faucetErr) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "Demo faucet funding failed",
+              details: (faucetErr as Error).message,
+            })
+          );
+        }
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Malformed JSON" }));
+      }
+    });
     return;
   }
 

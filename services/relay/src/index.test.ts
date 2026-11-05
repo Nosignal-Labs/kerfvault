@@ -215,4 +215,54 @@ describe("Relay Request Validation & Payload Caps", () => {
     const res = await mockReqRes("POST", "/redeem", invalid);
     expect(res.status).toBe(400);
   });
+
+  describe("Demo Faucet Endpoint", () => {
+    const testAddr = "GBYORV7UOSJQIJS4ADSER2UCR7ZNAAEOVUVCKBPWFG7RN5P2HXJCWNJK";
+
+    it("returns 404 when DEMO_MODE is not enabled", async () => {
+      const res = await mockReqRes("POST", "/demo/faucet", { address: testAddr }, {
+        config: { demoMode: false },
+      });
+      expect(res.status).toBe(404);
+      const json = JSON.parse(res.body);
+      expect(json.error).toContain("disabled");
+    });
+
+    it("funds account when DEMO_MODE is enabled", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      });
+
+      const res = await mockReqRes(
+        "POST",
+        "/demo/faucet",
+        { address: testAddr },
+        {
+          config: {
+            demoMode: true,
+            fetchFn: mockFetch as unknown as typeof fetch,
+          },
+        }
+      );
+
+      expect(res.status).toBe(200);
+      const json = JSON.parse(res.body);
+      expect(json.success).toBe(true);
+      expect(json.address).toBe(testAddr);
+    });
+
+    it("rejects invalid address with 400", async () => {
+      const res = await mockReqRes(
+        "POST",
+        "/demo/faucet",
+        { address: "invalid-stellar-key" },
+        {
+          config: { demoMode: true },
+        }
+      );
+      expect(res.status).toBe(400);
+    });
+  });
 });
