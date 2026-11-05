@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { Account, Keypair, type rpc } from "@stellar/stellar-sdk";
-import { handleRequest, MAX_PAYLOAD_BYTES, type SubmitRedeemConfig } from "./index.js";
+import { Account, Keypair, rpc } from "@stellar/stellar-sdk";
+import { handleRequest, MAX_PAYLOAD_BYTES, type RelayServerConfig } from "./index.js";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -8,7 +8,7 @@ function mockReqRes(
   method: string,
   url: string,
   payload?: object | string,
-  options?: { rawString?: boolean; config?: SubmitRedeemConfig }
+  options?: { rawString?: boolean; config?: RelayServerConfig }
 ) {
   const req = Object.assign(new EventEmitter(), {
     url,
@@ -37,7 +37,7 @@ function mockReqRes(
       },
     } as unknown as ServerResponse;
 
-    handleRequest(req, res, options?.config);
+    void handleRequest(req, res, options?.config);
 
     if (payload) {
       const dataStr = options?.rawString ? (payload as string) : JSON.stringify(payload);
@@ -59,6 +59,8 @@ const VALID_REDEEM_PAYLOAD = {
   signature:
     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
 };
+
+const VALID_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 describe("Relay Request Validation & Payload Caps", () => {
   it("responds 200 ok to GET /health", async () => {
@@ -89,6 +91,34 @@ describe("Relay Request Validation & Payload Caps", () => {
     const json = JSON.parse(res.body);
     expect(json.status).toBe("success");
     expect(json.txHash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  });
+
+  it("looks up redemption status via GET /redeem/:hash", async () => {
+    const mockServer = {
+      getTransaction: vi.fn().mockResolvedValue({
+        status: rpc.Api.GetTransactionStatus.SUCCESS,
+        latestLedger: 998877,
+        createdAt: 1720000000,
+      }),
+    } as unknown as rpc.Server;
+
+    const res = await mockReqRes("GET", `/redeem/${VALID_HASH}`, undefined, {
+      config: {
+        server: mockServer,
+      },
+    });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.status).toBe("success");
+    expect(json.hash).toBe(VALID_HASH);
+    expect(json.ledger).toBe(998877);
+  });
+
+  it("rejects invalid hash format in GET /redeem/:hash with 400", async () => {
+    const res = await mockReqRes("GET", "/redeem/not-a-valid-hash");
+    expect(res.status).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.error).toContain("Invalid transaction hash");
   });
 
   it("rejects oversized request payload exceeding 16KB with 413", async () => {
