@@ -1,6 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { z } from "zod";
-import { checkRateLimit } from "./rateLimit.js";
+import {
+  checkRateLimit,
+  DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+} from "./rateLimit.js";
 import { buildRedeemTransaction } from "./tx.js";
 import { submitRedeemTransaction, type SubmitRedeemConfig } from "./submit.js";
 import { getRedemptionStatus, TX_HASH_REGEX, type RelayStatusConfig } from "./status.js";
@@ -117,9 +120,21 @@ export async function handleRequest(
 
   if (method === "POST" && pathname === "/redeem") {
     const rateLimit = checkRateLimit(clientIp);
+    res.setHeader("X-RateLimit-Limit", DEFAULT_RATE_LIMIT_MAX_REQUESTS.toString());
+    res.setHeader("X-RateLimit-Remaining", rateLimit.remaining.toString());
+    res.setHeader("X-RateLimit-Reset", Math.ceil(rateLimit.resetTime / 1000).toString());
+
     if (!rateLimit.allowed) {
+      if (rateLimit.retryAfterSeconds) {
+        res.setHeader("Retry-After", rateLimit.retryAfterSeconds.toString());
+      }
       res.writeHead(429, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Rate limit exceeded" }));
+      res.end(
+        JSON.stringify({
+          error: "Rate limit exceeded. Try again later.",
+          retryAfter: rateLimit.retryAfterSeconds,
+        })
+      );
       return;
     }
 
