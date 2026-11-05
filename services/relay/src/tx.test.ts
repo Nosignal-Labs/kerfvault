@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { Account, scValToNative, xdr } from "@stellar/stellar-sdk";
-import { buildRedeemTransaction, type RelayTxConfig } from "./tx.js";
+import {
+  Account,
+  Asset,
+  Contract,
+  Operation,
+  TransactionBuilder,
+  nativeToScVal,
+  scValToNative,
+} from "@stellar/stellar-sdk";
+import {
+  ALLOWED_RELAY_FUNCTION,
+  buildRedeemTransaction,
+  verifyRestrictedTransaction,
+  type RelayTxConfig,
+} from "./tx.js";
 import type { RedeemRequestBody } from "./index.js";
 
 const TEST_CONFIG: RelayTxConfig = {
@@ -21,7 +34,7 @@ const VALID_PARAMS: RedeemRequestBody = {
     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
 };
 
-describe("Relay Transaction Builder", () => {
+describe("Relay Transaction Builder & Target Restrictions", () => {
   const dummyAccount = new Account(
     "GD3QC7FB6RAMQCKEJQR74L6LR5DTS3QKI46M6NNABSE27M2HV5DEZYZU",
     "1000"
@@ -39,7 +52,7 @@ describe("Relay Transaction Builder", () => {
 
     const invokeArgs = hostFn.invokeContract;
     const functionName = invokeArgs.functionName.toString();
-    expect(functionName).toBe("redeem");
+    expect(functionName).toBe(ALLOWED_RELAY_FUNCTION);
 
     const args = invokeArgs.args;
     expect(args).toHaveLength(7);
@@ -81,5 +94,96 @@ describe("Relay Transaction Builder", () => {
     expect(() =>
       buildRedeemTransaction(TEST_CONFIG, dummyAccount, invalidSigParams)
     ).toThrow(/Invalid signature length/);
+  });
+
+  it("rejects invalid contract ID format", () => {
+    const invalidConfig: RelayTxConfig = {
+      ...TEST_CONFIG,
+      contractId: "NOT_A_VALID_CONTRACT_ID",
+    };
+
+    expect(() =>
+      buildRedeemTransaction(invalidConfig, dummyAccount, VALID_PARAMS)
+    ).toThrow(/is not a valid 56-character Stellar contract ID/);
+  });
+
+  it("rejects transactions that invoke any contract function other than redeem", () => {
+    const otherContract = new Contract(TEST_CONFIG.contractId);
+    const rogueTx = new TransactionBuilder(dummyAccount, {
+      fee: "100",
+      networkPassphrase: TEST_CONFIG.networkPassphrase,
+    })
+      .addOperation(
+        otherContract.call("open_book", nativeToScVal(1n, { type: "u64" }))
+      )
+      .setTimeout(30)
+      .build();
+
+    expect(() =>
+      verifyRestrictedTransaction(rogueTx, TEST_CONFIG.contractId)
+    ).toThrow(/Relay is strictly restricted to function "redeem"/);
+  });
+
+  it("rejects transactions targeting an unauthorized contract ID", () => {
+    const foreignContractId =
+      "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+    const foreignContract = new Contract(foreignContractId);
+    const rogueTx = new TransactionBuilder(dummyAccount, {
+      fee: "100",
+      networkPassphrase: TEST_CONFIG.networkPassphrase,
+    })
+      .addOperation(
+        foreignContract.call(ALLOWED_RELAY_FUNCTION, nativeToScVal(1n, { type: "u64" }))
+      )
+      .setTimeout(30)
+      .build();
+
+    expect(() =>
+      verifyRestrictedTransaction(rogueTx, TEST_CONFIG.contractId)
+    ).toThrow(/Relay is strictly restricted to contract/);
+  });
+
+  it("rejects multi-operation transactions", () => {
+    const contract = new Contract(TEST_CONFIG.contractId);
+    const multiOpTx = new TransactionBuilder(dummyAccount, {
+      fee: "100",
+      networkPassphrase: TEST_CONFIG.networkPassphrase,
+    })
+      .addOperation(
+        contract.call(ALLOWED_RELAY_FUNCTION, nativeToScVal(1n, { type: "u64" }))
+      )
+      .addOperation(
+        Operation.payment({
+          destination: "GDELSDATL7W2JEDSUGSQUFP3YP36VPWM4V4C5TJLIY4LZMIMKGCSRNFG",
+          amount: "10",
+          asset: Asset.native(),
+        })
+      )
+      .setTimeout(30)
+      .build();
+
+    expect(() =>
+      verifyRestrictedTransaction(multiOpTx, TEST_CONFIG.contractId)
+    ).toThrow(/Relay transaction must contain exactly 1 operation/);
+  });
+
+  it("rejects non-invokeHostFunction operations", () => {
+    const nonHostFnTx = new TransactionBuilder(dummyAccount, {
+      fee: "100",
+      networkPassphrase: TEST_CONFIG.networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: "GDELSDATL7W2JEDSUGSQUFP3YP36VPWM4V4C5TJLIY4LZMIMKGCSRNFG",
+          amount: "10",
+          asset: Asset.native(),
+        })
+      )
+      .setTimeout(30)
+      .build();
+
+    expect(() =>
+      verifyRestrictedTransaction(nonHostFnTx, TEST_CONFIG.contractId)
+    ).toThrow(/Operation type must be invokeHostFunction/);
   });
 });
