@@ -1,6 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { Account } from "@stellar/stellar-sdk";
 import { z } from "zod";
 import { checkRateLimit } from "./rateLimit.js";
+import { buildRedeemTransaction } from "./tx.js";
+
+export * from "./rateLimit.js";
+export * from "./tx.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
 
@@ -119,12 +124,44 @@ export function handleRequest(req: IncomingMessage, res: ServerResponse): void {
           return;
         }
 
-        // Return 501 Not Implemented stub (to be implemented in S4-08/S4-10)
+        // Build the redemption transaction directly from structured fields
+        try {
+          const dummySource = new Account(
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+            "100"
+          );
+          const contractId =
+            process.env.KERFVAULT_CONTRACT_ID ??
+            "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE";
+          const networkPassphrase =
+            process.env.STELLAR_NETWORK_PASSPHRASE ??
+            "Test SDF Network ; September 2015";
+
+          buildRedeemTransaction(
+            { contractId, networkPassphrase },
+            dummySource,
+            validation.data
+          );
+        } catch (txErr) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "Failed to construct redeem transaction",
+              details: (txErr as Error).message,
+            })
+          );
+          return;
+        }
+
+        // Return 501 Not Implemented stub (to be simulated and submitted with RELAY_SECRET in S4-10)
         res.writeHead(501, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
-            status: "Not Implemented",
-            message: "Redeem request accepted and validated. Transaction submission will be implemented in subsequent steps.",
+            status: "Transaction Built",
+            message:
+              "Redeem transaction successfully constructed from structured parameters without accepting raw XDR. Simulation and submission with fee account is deferred to S4-10.",
+            builtOperation: "redeem",
+            txBuilt: true,
             validated: validation.data,
           })
         );

@@ -71,7 +71,7 @@ describe("Relay Request Validation & Payload Caps", () => {
     const res = await mockReqRes("POST", "/redeem", VALID_REDEEM_PAYLOAD);
     expect(res.status).toBe(501);
     const json = JSON.parse(res.body);
-    expect(json.status).toBe("Not Implemented");
+    expect(json.status).toBe("Transaction Built");
   });
 
   it("rejects oversized request payload exceeding 16KB with 413", async () => {
