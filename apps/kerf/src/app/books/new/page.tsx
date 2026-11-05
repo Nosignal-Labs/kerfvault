@@ -4,12 +4,51 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { BookConfigForm } from "../../../components/BookConfigForm";
 import type { BookConfiguration } from "../../../lib/bookConfig";
+import {
+  openBookWorkflow,
+  type OpenBookProgress,
+} from "../../../lib/openBookWorkflow";
+import { useWallet } from "../../../lib/WalletContext";
 
 export default function NewBookPage() {
-  const [selectedConfig, setSelectedConfig] = useState<BookConfiguration | null>(null);
+  const { secret, publicKey, voucherPublicKey, isUnlocked, refreshBalance } = useWallet();
 
-  const handleConfigSubmit = (config: BookConfiguration) => {
-    setSelectedConfig(config);
+  const [progress, setProgress] = useState<OpenBookProgress | null>(null);
+  const [createdBookId, setCreatedBookId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleConfigSubmit = async (config: BookConfiguration) => {
+    if (!isUnlocked || !secret || !publicKey || !voucherPublicKey) {
+      alert("Please unlock your wallet first.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setProgress({ step: "VALIDATING", message: "Starting book creation..." });
+
+      const result = await openBookWorkflow({
+        config,
+        ownerSecret: secret,
+        ownerAddress: publicKey,
+        voucherPublicKey,
+        onProgress: (p) => setProgress(p),
+      });
+
+      setCreatedBookId(result.bookId);
+      // Refresh wallet balance after locking funds
+      refreshBalance();
+    } catch {
+      // Progress error state handled in onProgress callback
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReset = () => {
+    setProgress(null);
+    setCreatedBookId(null);
+    setIsSubmitting(false);
   };
 
   return (
@@ -33,17 +72,76 @@ export default function NewBookPage() {
           Choose note denominations and a redemption deadline to lock funds into fixed-value offline vouchers.
         </p>
 
-        <BookConfigForm onSubmit={handleConfigSubmit} />
-
-        {selectedConfig && (
-          <div className="mt-6 p-4 rounded-lg bg-sky-950/30 border border-sky-800/60 text-xs text-sky-200 space-y-2">
-            <div className="font-semibold text-sky-100">
-              Book Configuration Configured ({selectedConfig.totalXlm} XLM):
-            </div>
-            <div className="font-mono text-[11px] text-zinc-400 break-all">
-              Notes: [{selectedConfig.denominations.join(", ")}] XLM | Deadline: {selectedConfig.deadlineDays} days ({new Date(selectedConfig.deadlineTimestamp * 1000).toISOString()})
-            </div>
+        {/* Live Progress Card when submitting or confirmed */}
+        {progress && (
+          <div className="mb-6 border rounded-lg p-5 bg-zinc-950/80 transition-all space-y-3">
+            {progress.step === "CONFIRMED" ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-base">
+                  <span className="text-xl">✓</span>
+                  <span>{progress.message}</span>
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Your funds are now locked into Book #{createdBookId} on Stellar Testnet. You can present offline payment vouchers from these notes.
+                </p>
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <Link
+                    href={`/books/${createdBookId}`}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium text-xs transition"
+                  >
+                    View Book #{createdBookId}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 rounded text-xs font-medium text-zinc-300 transition"
+                  >
+                    Open Another Book
+                  </button>
+                </div>
+              </div>
+            ) : progress.step === "ERROR" ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-red-400 font-semibold text-sm">
+                  <span>✕</span>
+                  <span>Book Creation Failed</span>
+                </div>
+                <div className="text-xs text-red-300/90 font-mono bg-red-950/30 p-2.5 rounded border border-red-900/40 break-all">
+                  {progress.error || progress.message}
+                </div>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded text-zinc-200 transition"
+                  >
+                    Dismiss & Edit
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 text-sky-400 font-medium text-sm">
+                    <span className="inline-block h-3.5 w-3.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                    <span>Processing on Stellar Testnet...</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">{progress.step}</span>
+                </div>
+                <div className="text-xs text-zinc-300 font-mono bg-zinc-900/90 p-2.5 rounded border border-zinc-800">
+                  {progress.message}
+                </div>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Configuration Form */}
+        {(!progress || progress.step === "ERROR") && (
+          <BookConfigForm
+            onSubmit={handleConfigSubmit}
+            isSubmitting={isSubmitting}
+          />
         )}
       </div>
 
