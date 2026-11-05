@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleRequest, MAX_PAYLOAD_BYTES } from "./index.js";
+import { Account, Keypair, type rpc } from "@stellar/stellar-sdk";
+import { handleRequest, MAX_PAYLOAD_BYTES, type SubmitRedeemConfig } from "./index.js";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -7,7 +8,7 @@ function mockReqRes(
   method: string,
   url: string,
   payload?: object | string,
-  options?: { rawString?: boolean }
+  options?: { rawString?: boolean; config?: SubmitRedeemConfig }
 ) {
   const req = Object.assign(new EventEmitter(), {
     url,
@@ -36,7 +37,7 @@ function mockReqRes(
       },
     } as unknown as ServerResponse;
 
-    handleRequest(req, res);
+    handleRequest(req, res, options?.config);
 
     if (payload) {
       const dataStr = options?.rawString ? (payload as string) : JSON.stringify(payload);
@@ -67,11 +68,27 @@ describe("Relay Request Validation & Payload Caps", () => {
     expect(json.status).toBe("ok");
   });
 
-  it("accepts valid structured redeem payload", async () => {
-    const res = await mockReqRes("POST", "/redeem", VALID_REDEEM_PAYLOAD);
-    expect(res.status).toBe(501);
+  it("accepts valid structured redeem payload and submits transaction", async () => {
+    const testKeypair = Keypair.random();
+    const mockServer = {
+      getAccount: vi.fn().mockResolvedValue(new Account(testKeypair.publicKey(), "100")),
+      prepareTransaction: vi.fn().mockImplementation((tx) => Promise.resolve(tx)),
+      sendTransaction: vi.fn().mockResolvedValue({
+        status: "PENDING",
+        hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      }),
+    } as unknown as rpc.Server;
+
+    const res = await mockReqRes("POST", "/redeem", VALID_REDEEM_PAYLOAD, {
+      config: {
+        relaySecret: testKeypair.secret(),
+        server: mockServer,
+      },
+    });
+    expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
-    expect(json.status).toBe("Transaction Built");
+    expect(json.status).toBe("success");
+    expect(json.txHash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   });
 
   it("rejects oversized request payload exceeding 16KB with 413", async () => {
