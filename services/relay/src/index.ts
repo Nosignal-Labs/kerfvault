@@ -12,16 +12,19 @@ import {
   FaucetRequestSchema,
   type FaucetConfig,
 } from "./faucet.js";
+import { handleCors, type CorsOptions } from "./cors.js";
 
 export * from "./rateLimit.js";
 export * from "./tx.js";
 export * from "./submit.js";
 export * from "./status.js";
 export * from "./faucet.js";
+export * from "./cors.js";
 
 export type RelayServerConfig = SubmitRedeemConfig &
   RelayStatusConfig &
-  FaucetConfig;
+  FaucetConfig &
+  CorsOptions;
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4002;
 
@@ -87,6 +90,10 @@ export async function handleRequest(
   res: ServerResponse,
   config?: RelayServerConfig
 ): Promise<void> {
+  if (handleCors(req, res, { allowedOrigins: config?.allowedOrigins })) {
+    return;
+  }
+
   const url = req.url ?? "/";
   const method = req.method ?? "GET";
   const clientIp = req.socket.remoteAddress ?? "127.0.0.1";

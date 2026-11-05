@@ -6,7 +6,11 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Queryable } from "./db/migrate.js";
 
-function createMockHttp(url: string, method = "GET"): {
+function createMockHttp(
+  url: string,
+  method = "GET",
+  reqHeaders: Record<string, string> = {}
+): {
   req: IncomingMessage;
   res: ServerResponse;
   getResponse: () => { statusCode: number; headers: Record<string, string>; body: string };
@@ -14,6 +18,7 @@ function createMockHttp(url: string, method = "GET"): {
   const req = Object.assign(new EventEmitter(), {
     url,
     method,
+    headers: reqHeaders,
   }) as unknown as IncomingMessage;
 
   let statusCode = 0;
@@ -21,9 +26,16 @@ function createMockHttp(url: string, method = "GET"): {
   let body = "";
 
   const res = {
+    setHeader(name: string, value: string) {
+      headers[name.toLowerCase()] = value;
+    },
     writeHead(code: number, h?: Record<string, string>) {
       statusCode = code;
-      if (h) headers = h;
+      if (h) {
+        for (const [k, v] of Object.entries(h)) {
+          headers[k.toLowerCase()] = v;
+        }
+      }
     },
     end(chunk: string) {
       body = chunk;
@@ -55,7 +67,7 @@ describe("Indexer HTTP Service & Health Endpoint", () => {
 
     const { statusCode, headers, body } = getResponse();
     expect(statusCode).toBe(200);
-    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers["content-type"]).toBe("application/json");
 
     const json = JSON.parse(body);
     expect(json.status).toBe("ok");
@@ -151,6 +163,46 @@ describe("Indexer HTTP Service & Health Endpoint", () => {
     const servedSnapshot = JSON.parse(body);
     expect(servedSnapshot.ledgerSequence).toBe(12345);
     expect(servedSnapshot.books["1"].notes[0].status).toBe("Redeemed");
+  });
+
+  it("handles CORS allowed origins on GET /health", async () => {
+    const { req, res, getResponse } = createMockHttp(
+      "/health",
+      "GET",
+      { origin: "http://localhost:3000" }
+    );
+    await handleRequest(req, res);
+
+    const { statusCode, headers } = getResponse();
+    expect(statusCode).toBe(200);
+    expect(headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+  });
+
+  it("handles CORS preflight OPTIONS request with 204", async () => {
+    const { req, res, getResponse } = createMockHttp(
+      "/registry",
+      "OPTIONS",
+      { origin: "http://localhost:3001" }
+    );
+    await handleRequest(req, res);
+
+    const { statusCode, headers } = getResponse();
+    expect(statusCode).toBe(204);
+    expect(headers["access-control-allow-origin"]).toBe("http://localhost:3001");
+  });
+
+  it("rejects unauthorized CORS origins with 403 Forbidden", async () => {
+    const { req, res, getResponse } = createMockHttp(
+      "/health",
+      "GET",
+      { origin: "https://unauthorized-origin.com" }
+    );
+    await handleRequest(req, res);
+
+    const { statusCode, headers, body } = getResponse();
+    expect(statusCode).toBe(403);
+    expect(headers["access-control-allow-origin"]).toBeUndefined();
+    expect(body).toContain("Forbidden");
   });
 
   it("returns 404 for unknown endpoints", async () => {
