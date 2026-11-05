@@ -9,6 +9,13 @@ import {
   clearStoredWallet,
   type WalletSession,
 } from "./wallet";
+import {
+  hasStoredVoucherKey,
+  getStoredVoucherKey,
+  mintAndStoreVoucherKey,
+  unlockStoredVoucherKey,
+  clearStoredVoucherKey,
+} from "./voucherKey";
 import { fetchAccountBalance, requestFaucetFunding } from "./faucet";
 
 interface WalletContextValue {
@@ -17,12 +24,16 @@ interface WalletContextValue {
   isUnlocked: boolean;
   publicKey: string | null;
   secret: string | null;
+  voucherPublicKey: string | null;
+  voucherSecret: string | null;
+  hasVoucherKey: boolean;
   balance: string | null;
   isFunding: boolean;
   fundingMessage: string | null;
   error: string | null;
   createWallet: (passcode: string) => Promise<void>;
   unlockWallet: (passcode: string) => Promise<void>;
+  mintVoucherKey: (passcode: string) => Promise<string>;
   lockWallet: () => void;
   resetWallet: () => void;
   clearError: () => void;
@@ -35,7 +46,9 @@ const WalletContext = createContext<WalletContextValue | undefined>(undefined);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasWallet, setHasWallet] = useState(false);
+  const [hasVoucherKey, setHasVoucherKey] = useState(false);
   const [session, setSession] = useState<WalletSession | null>(null);
+  const [voucherSession, setVoucherSession] = useState<WalletSession | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
   const [isFunding, setIsFunding] = useState(false);
   const [fundingMessage, setFundingMessage] = useState<string | null>(null);
@@ -54,17 +67,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Sync with storage on mount
   useEffect(() => {
     try {
-      const exists = hasStoredWallet();
-      setHasWallet(exists);
-      if (exists) {
+      const walletExists = hasStoredWallet();
+      setHasWallet(walletExists);
+      if (walletExists) {
         const stored = getStoredWallet();
         if (stored) {
-          // Address can be previewed even when locked
           setSession({ publicKey: stored.publicKey, secret: "" });
         }
       }
+
+      const voucherKeyExists = hasStoredVoucherKey();
+      setHasVoucherKey(voucherKeyExists);
+      if (voucherKeyExists) {
+        const storedVoucher = getStoredVoucherKey();
+        if (storedVoucher) {
+          setVoucherSession({ publicKey: storedVoucher.publicKey, secret: "" });
+        }
+      }
     } catch (err) {
-      console.error("Failed to read stored wallet:", err);
+      console.error("Failed to read stored keys:", err);
     } finally {
       setIsLoaded(true);
     }
@@ -85,6 +106,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const { session: newSession } = await createAndStoreWallet(passcode);
       setSession(newSession);
       setHasWallet(true);
+
+      // Concurrently mint a separate, dedicated voucher signing key
+      const { session: newVoucherSession } = await mintAndStoreVoucherKey(passcode);
+      setVoucherSession(newVoucherSession);
+      setHasVoucherKey(true);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create wallet.";
       setError(message);
@@ -97,8 +123,33 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const unlocked = await unlockStoredWallet(passcode);
       setSession(unlocked);
+
+      // Also unlock voucher signing key if present; otherwise mint one
+      if (hasStoredVoucherKey()) {
+        const unlockedVoucher = await unlockStoredVoucherKey(passcode);
+        setVoucherSession(unlockedVoucher);
+        setHasVoucherKey(true);
+      } else {
+        const { session: mintedVoucher } = await mintAndStoreVoucherKey(passcode);
+        setVoucherSession(mintedVoucher);
+        setHasVoucherKey(true);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Incorrect passcode.";
+      setError(message);
+      throw err;
+    }
+  }, []);
+
+  const mintVoucherKey = useCallback(async (passcode: string): Promise<string> => {
+    setError(null);
+    try {
+      const { session: newVoucherSession } = await mintAndStoreVoucherKey(passcode);
+      setVoucherSession(newVoucherSession);
+      setHasVoucherKey(true);
+      return newVoucherSession.publicKey;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to mint voucher key.";
       setError(message);
       throw err;
     }
@@ -110,13 +161,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } else {
       setSession(null);
     }
+    if (voucherSession?.publicKey) {
+      setVoucherSession({ publicKey: voucherSession.publicKey, secret: "" });
+    } else {
+      setVoucherSession(null);
+    }
     setError(null);
-  }, [session]);
+  }, [session, voucherSession]);
 
   const resetWallet = useCallback(() => {
     clearStoredWallet();
+    clearStoredVoucherKey();
     setSession(null);
+    setVoucherSession(null);
     setHasWallet(false);
+    setHasVoucherKey(false);
     setBalance(null);
     setFundingMessage(null);
     setError(null);
@@ -141,7 +200,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session?.publicKey, refreshBalance]);
 
-  const isUnlocked = Boolean(session?.secret && session.secret.length > 0);
+  const isUnlocked = Boolean(
+    session?.secret &&
+    session.secret.length > 0 &&
+    voucherSession?.secret &&
+    voucherSession.secret.length > 0
+  );
 
   return (
     <WalletContext.Provider
@@ -151,12 +215,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         isUnlocked,
         publicKey: session?.publicKey ?? null,
         secret: session?.secret || null,
+        voucherPublicKey: voucherSession?.publicKey ?? null,
+        voucherSecret: voucherSession?.secret || null,
+        hasVoucherKey,
         balance,
         isFunding,
         fundingMessage,
         error,
         createWallet,
         unlockWallet,
+        mintVoucherKey,
         lockWallet,
         resetWallet,
         clearError,
