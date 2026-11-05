@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { Account, Keypair, rpc } from "@stellar/stellar-sdk";
-import { handleRequest, MAX_PAYLOAD_BYTES, type RelayServerConfig } from "./index.js";
+import {
+  handleRequest,
+  MAX_PAYLOAD_BYTES,
+  type RelayServerConfig,
+} from "./index.js";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -8,12 +12,14 @@ function mockReqRes(
   method: string,
   url: string,
   payload?: object | string,
-  options?: { rawString?: boolean; config?: RelayServerConfig }
+  options?: { rawString?: boolean; config?: RelayServerConfig; remoteIp?: string }
 ) {
   const req = Object.assign(new EventEmitter(), {
     url,
     method,
-    socket: { remoteAddress: `127.0.0.${Math.floor(Math.random() * 200) + 10}` },
+    socket: {
+      remoteAddress: options?.remoteIp ?? `127.0.0.${Math.floor(Math.random() * 200) + 10}`,
+    },
     destroy: vi.fn(),
   }) as unknown as IncomingMessage;
 
@@ -27,9 +33,12 @@ function mockReqRes(
     body: string;
   }>((resolve) => {
     const res = {
-      writeHead(code: number, h: Record<string, string>) {
+      setHeader(name: string, value: string) {
+        headers[name.toLowerCase()] = value;
+      },
+      writeHead(code: number, h?: Record<string, string>) {
         statusCode = code;
-        headers = h;
+        if (h) Object.assign(headers, h);
       },
       end(chunk: string) {
         body = chunk;
@@ -91,6 +100,41 @@ describe("Relay Request Validation & Payload Caps", () => {
     const json = JSON.parse(res.body);
     expect(json.status).toBe("success");
     expect(json.txHash).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    expect(res.headers["x-ratelimit-limit"]).toBeDefined();
+  });
+
+  it("throttles callers exceeding per-IP limit with 429 and Retry-After header", async () => {
+    const dedicatedIp = "192.168.10.99";
+    const testKeypair = Keypair.random();
+    const mockServer = {
+      getAccount: vi.fn().mockResolvedValue(new Account(testKeypair.publicKey(), "100")),
+      prepareTransaction: vi.fn().mockImplementation((tx) => Promise.resolve(tx)),
+      sendTransaction: vi.fn().mockResolvedValue({
+        status: "PENDING",
+        hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      }),
+    } as unknown as rpc.Server;
+
+    const opts = {
+      remoteIp: dedicatedIp,
+      config: {
+        relaySecret: testKeypair.secret(),
+        server: mockServer,
+      },
+    };
+
+    // Burn through allowance
+    for (let i = 0; i < 10; i++) {
+      const res = await mockReqRes("POST", "/redeem", VALID_REDEEM_PAYLOAD, opts);
+      expect(res.status).toBe(200);
+    }
+
+    // 11th request must be throttled with 429
+    const throttled = await mockReqRes("POST", "/redeem", VALID_REDEEM_PAYLOAD, opts);
+    expect(throttled.status).toBe(429);
+    const json = JSON.parse(throttled.body);
+    expect(json.error).toContain("Rate limit exceeded");
+    expect(throttled.headers["retry-after"]).toBeDefined();
   });
 
   it("looks up redemption status via GET /redeem/:hash", async () => {
