@@ -9,6 +9,7 @@ import {
   clearStoredWallet,
   type WalletSession,
 } from "./wallet";
+import { fetchAccountBalance, requestFaucetFunding } from "./faucet";
 
 interface WalletContextValue {
   isLoaded: boolean;
@@ -16,12 +17,17 @@ interface WalletContextValue {
   isUnlocked: boolean;
   publicKey: string | null;
   secret: string | null;
+  balance: string | null;
+  isFunding: boolean;
+  fundingMessage: string | null;
   error: string | null;
   createWallet: (passcode: string) => Promise<void>;
   unlockWallet: (passcode: string) => Promise<void>;
   lockWallet: () => void;
   resetWallet: () => void;
   clearError: () => void;
+  requestFunds: () => Promise<void>;
+  refreshBalance: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -30,7 +36,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasWallet, setHasWallet] = useState(false);
   const [session, setSession] = useState<WalletSession | null>(null);
+  const [balance, setBalance] = useState<string | null>(null);
+  const [isFunding, setIsFunding] = useState(false);
+  const [fundingMessage, setFundingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshBalance = useCallback(async () => {
+    if (!session?.publicKey) return;
+    try {
+      const bal = await fetchAccountBalance(session.publicKey);
+      setBalance(bal);
+    } catch {
+      // Non-critical background balance fetch
+    }
+  }, [session?.publicKey]);
 
   // Sync with storage on mount
   useEffect(() => {
@@ -50,6 +69,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setIsLoaded(true);
     }
   }, []);
+
+  // Update balance whenever public key changes
+  useEffect(() => {
+    if (session?.publicKey) {
+      refreshBalance();
+    } else {
+      setBalance(null);
+    }
+  }, [session?.publicKey, refreshBalance]);
 
   const createWallet = useCallback(async (passcode: string) => {
     setError(null);
@@ -89,10 +117,29 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     clearStoredWallet();
     setSession(null);
     setHasWallet(false);
+    setBalance(null);
+    setFundingMessage(null);
     setError(null);
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
+
+  const requestFunds = useCallback(async () => {
+    if (!session?.publicKey) return;
+    setIsFunding(true);
+    setError(null);
+    setFundingMessage(null);
+    try {
+      const res = await requestFaucetFunding(session.publicKey);
+      setFundingMessage(res.message || "Funded successfully from testnet faucet.");
+      await refreshBalance();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Faucet request failed";
+      setError(message);
+    } finally {
+      setIsFunding(false);
+    }
+  }, [session?.publicKey, refreshBalance]);
 
   const isUnlocked = Boolean(session?.secret && session.secret.length > 0);
 
@@ -104,12 +151,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         isUnlocked,
         publicKey: session?.publicKey ?? null,
         secret: session?.secret || null,
+        balance,
+        isFunding,
+        fundingMessage,
         error,
         createWallet,
         unlockWallet,
         lockWallet,
         resetWallet,
         clearError,
+        requestFunds,
+        refreshBalance,
       }}
     >
       {children}
