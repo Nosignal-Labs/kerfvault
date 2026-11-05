@@ -43,8 +43,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
 
-      - name: Build SDK
-        run: pnpm --filter @kerfvault/sdk build
+      - name: Build shared packages
+        run: |
+          pnpm --filter @kerfvault/sdk build
+          pnpm --filter @kerfvault/web-wallet build
 
       - name: Lint all workspaces
         run: pnpm -r lint
@@ -57,4 +59,3 @@ jobs:
 
       - name: Build all packages & apps
         run: pnpm -r build
-
