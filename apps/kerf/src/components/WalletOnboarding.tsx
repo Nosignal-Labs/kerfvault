@@ -9,12 +9,17 @@ export function WalletOnboarding() {
     hasWallet,
     isUnlocked,
     publicKey,
+    balance,
+    isFunding,
+    fundingMessage,
     error,
     createWallet,
     unlockWallet,
     lockWallet,
     resetWallet,
     clearError,
+    requestFunds,
+    refreshBalance,
   } = useWallet();
 
   const [passcode, setPasscode] = useState("");
@@ -104,6 +109,7 @@ export function WalletOnboarding() {
           </button>
         </div>
 
+        {/* Public Address */}
         <div className="space-y-1">
           <label className="text-xs text-zinc-400 font-mono">PUBLIC ADDRESS (TESTNET)</label>
           <div className="flex items-center gap-2">
@@ -122,6 +128,58 @@ export function WalletOnboarding() {
             </button>
           </div>
         </div>
+
+        {/* Balance & Demo Faucet Top-up */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-zinc-900/60 border border-zinc-800 p-3.5 rounded-lg">
+          <div>
+            <div className="text-[11px] text-zinc-400 uppercase tracking-wide">Testnet Balance</div>
+            <div className="text-sm font-semibold text-zinc-100 mt-0.5">
+              {balance !== null
+                ? `${Number(balance).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 7,
+                  })} XLM`
+                : "Unfunded / Account Not On Chain"}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={requestFunds}
+              disabled={isFunding}
+              className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-medium text-xs transition flex items-center justify-center gap-1.5"
+            >
+              {isFunding ? (
+                <>
+                  <span className="inline-block h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Funding...
+                </>
+              ) : (
+                "Get test funds"
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => refreshBalance()}
+              className="p-2 border border-zinc-700 hover:border-zinc-500 rounded text-zinc-400 hover:text-zinc-200 text-xs transition"
+              title="Refresh Balance"
+            >
+              ↻
+            </button>
+          </div>
+        </div>
+
+        {fundingMessage && (
+          <div className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/80 p-2.5 rounded">
+            {fundingMessage}
+          </div>
+        )}
+
+        {error && (
+          <div className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 p-2.5 rounded">
+            {error}
+          </div>
+        )}
 
         <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80">
           <span className="text-xs text-zinc-500">In-browser demo keys only</span>
@@ -173,7 +231,7 @@ export function WalletOnboarding() {
 
         {publicKey && (
           <div className="text-xs text-zinc-400 font-mono bg-zinc-950/60 p-2.5 rounded border border-zinc-800 break-all">
-            <span className="text-zinc-500 block text-[10px]">ADDRESS</span>
+            <span className="text-zinc-500 block text-[10px]">SAVED ADDRESS</span>
             {publicKey}
           </div>
         )}
@@ -296,4 +354,3 @@ export function WalletOnboarding() {
     </div>
   );
 }
-
