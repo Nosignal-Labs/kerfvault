@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kerfvault-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kerfvault
+      POSTGRES_USER: kerfvault
+      POSTGRES_PASSWORD: kerfvault_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kerfvault -d kerfvault"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  indexer:
+    build:
+      context: .
+      dockerfile: services/indexer/Dockerfile
+    container_name: kerfvault-indexer
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    environment:
+      PORT: "4001"
+      DATABASE_URL: "postgresql://kerfvault:kerfvault_dev_password@postgres:5432/kerfvault"
+      RPC_URL: "https://soroban-testnet.stellar.org"
+      NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      KERFVAULT_CONTRACT_ID: "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  relay:
+    build:
+      context: .
+      dockerfile: services/relay/Dockerfile
+    container_name: kerfvault-relay
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    environment:
+      PORT: "4002"
+      RPC_URL: "https://soroban-testnet.stellar.org"
+      NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      KERFVAULT_CONTRACT_ID: "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE"
+      RELAY_SECRET: "${RELAY_SECRET:-SCPTXZ2D4FGBYTR5NLE2LFXK7T6U4V3PNEKHK7E26D45QMWU6E2I3KEE}"
+      DEMO_MODE: "true"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:3001"
+
+volumes:
+  postgres_data:
