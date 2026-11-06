@@ -13,6 +13,10 @@ import {
   fetchRegistrySnapshot,
   type RegistryClientError,
 } from "../lib/registryClient";
+import {
+  getLatestRegistrySnapshot,
+  saveRegistrySnapshot,
+} from "../lib/storage";
 import type { RegistrySnapshot } from "@kerfvault/sdk";
 
 export default function ReaderHomePage() {
@@ -24,6 +28,18 @@ export default function ReaderHomePage() {
 
   useEffect(() => {
     setSettings(getMerchantSettings());
+
+    // Load previously persisted snapshot from IndexedDB on startup
+    getLatestRegistrySnapshot()
+      .then((record) => {
+        if (record) {
+          setSnapshot(record.snapshot);
+          setLastSyncTime(record.lastSyncedAt);
+        }
+      })
+      .catch(() => {
+        // IndexedDB may not be ready yet or empty
+      });
   }, []);
 
   const handleSync = async () => {
@@ -31,8 +47,9 @@ export default function ReaderHomePage() {
     setSyncError(null);
     try {
       const snap = await fetchRegistrySnapshot();
-      setSnapshot(snap);
-      setLastSyncTime(Date.now());
+      const saved = await saveRegistrySnapshot(snap, Date.now());
+      setSnapshot(saved.snapshot);
+      setLastSyncTime(saved.lastSyncedAt);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to sync registry.";
       setSyncError(msg);

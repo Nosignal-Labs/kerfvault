@@ -1,6 +1,16 @@
 import type { OfflineVoucher, RegistrySnapshot } from "@kerfvault/sdk";
 
-export type StoredVoucherStatus = "AcceptedOffline" | "PendingRelay" | "RedeemedOnChain" | "Rejected";
+export const DB_NAME = "kerfvault_reader_db";
+export const DB_VERSION = 1;
+
+export const STORE_SNAPSHOTS = "snapshots";
+export const STORE_VOUCHERS = "vouchers";
+
+export type StoredVoucherStatus =
+  | "AcceptedOffline"
+  | "PendingRelay"
+  | "RedeemedOnChain"
+  | "Rejected";
 
 export interface StoredVoucherRecord {
   id: string;
@@ -11,6 +21,12 @@ export interface StoredVoucherRecord {
   rejectionReason?: string;
 }
 
+export interface StoredSnapshotRecord {
+  id: "latest";
+  snapshot: RegistrySnapshot;
+  lastSyncedAt: number; // Unix epoch milliseconds
+}
+
 export interface MerchantLimits {
   maxOfflineVoucherAmount: bigint;
   maxTotalOfflineExposure: bigint;
@@ -18,60 +34,247 @@ export interface MerchantLimits {
 
 export interface IReaderStorage {
   // Snapshot cache operations
-  saveSnapshot(snapshot: RegistrySnapshot): Promise<void>;
-  getLatestSnapshot(): Promise<RegistrySnapshot | null>;
+  saveSnapshot(snapshot: RegistrySnapshot, lastSyncedAt?: number): Promise<StoredSnapshotRecord>;
+  getLatestSnapshot(): Promise<StoredSnapshotRecord | null>;
+  clearSnapshot(): Promise<void>;
 
   // Voucher operations
   saveVoucher(record: StoredVoucherRecord): Promise<void>;
   getVouchersByStatus(status?: StoredVoucherStatus): Promise<StoredVoucherRecord[]>;
-  updateVoucherStatus(id: string, status: StoredVoucherStatus, details?: { txHash?: string; reason?: string }): Promise<void>;
+  updateVoucherStatus(
+    id: string,
+    status: StoredVoucherStatus,
+    details?: { txHash?: string; reason?: string }
+  ): Promise<void>;
+}
 
-  // Merchant offline settings
-  getLimits(): Promise<MerchantLimits>;
-  updateLimits(limits: Partial<MerchantLimits>): Promise<void>;
+function getIndexedDB(customFactory?: IDBFactory): IDBFactory | null {
+  if (customFactory) return customFactory;
+  if (typeof window !== "undefined" && window.indexedDB) {
+    return window.indexedDB;
+  }
+  if (typeof globalThis !== "undefined" && (globalThis as unknown as { indexedDB?: IDBFactory }).indexedDB) {
+    return (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB;
+  }
+  return null;
+}
+
+export function openReaderDatabase(customFactory?: IDBFactory): Promise<IDBDatabase> {
+  const idb = getIndexedDB(customFactory);
+  if (!idb) {
+    return Promise.reject(new Error("IndexedDB is not supported or unavailable in this environment."));
+  }
+
+  return new Promise((resolve, reject) => {
+    const request = idb.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+
+      if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) {
+        db.createObjectStore(STORE_SNAPSHOTS, { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains(STORE_VOUCHERS)) {
+        const voucherStore = db.createObjectStore(STORE_VOUCHERS, { keyPath: "id" });
+        voucherStore.createIndex("status", "status", { unique: false });
+        voucherStore.createIndex("receivedAt", "receivedAt", { unique: false });
+      }
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onerror = () => {
+      reject(request.error || new Error("Failed to open IndexedDB reader database."));
+    };
+  });
 }
 
 /**
- * Placeholder IndexedDB storage implementation.
+ * Persists a registry snapshot into IndexedDB with an updated last-synced timestamp.
+ */
+export async function saveRegistrySnapshot(
+  snapshot: RegistrySnapshot,
+  lastSyncedAt = Date.now(),
+  customFactory?: IDBFactory
+): Promise<StoredSnapshotRecord> {
+  const db = await openReaderDatabase(customFactory);
+
+  const record: StoredSnapshotRecord = {
+    id: "latest",
+    snapshot,
+    lastSyncedAt,
+  };
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_SNAPSHOTS, "readwrite");
+    const store = tx.objectStore(STORE_SNAPSHOTS);
+    const req = store.put(record);
+
+    req.onsuccess = () => {
+      db.close();
+      resolve(record);
+    };
+
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to save snapshot to IndexedDB."));
+    };
+  });
+}
+
+/**
+ * Retrieves the latest cached registry snapshot and last-synced timestamp from IndexedDB.
+ */
+export async function getLatestRegistrySnapshot(
+  customFactory?: IDBFactory
+): Promise<StoredSnapshotRecord | null> {
+  const db = await openReaderDatabase(customFactory);
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_SNAPSHOTS, "readonly");
+    const store = tx.objectStore(STORE_SNAPSHOTS);
+    const req = store.get("latest");
+
+    req.onsuccess = () => {
+      db.close();
+      resolve((req.result as StoredSnapshotRecord) || null);
+    };
+
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to read snapshot from IndexedDB."));
+    };
+  });
+}
+
+/**
+ * Removes the stored registry snapshot from IndexedDB.
+ */
+export async function clearRegistrySnapshot(customFactory?: IDBFactory): Promise<void> {
+  const db = await openReaderDatabase(customFactory);
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_SNAPSHOTS, "readwrite");
+    const store = tx.objectStore(STORE_SNAPSHOTS);
+    const req = store.delete("latest");
+
+    req.onsuccess = () => {
+      db.close();
+      resolve();
+    };
+
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to clear snapshot from IndexedDB."));
+    };
+  });
+}
+
+/**
+ * Full IndexedDB reader storage implementation implementing IReaderStorage.
  */
 export class IndexedDBReaderStorage implements IReaderStorage {
-  async saveSnapshot(_snapshot: RegistrySnapshot): Promise<void> {
-    // TODO: Open IndexedDB 'kerfvault_reader' object store and persist snapshot
-    throw new Error("TODO: IndexedDB saveSnapshot not implemented");
+  constructor(private customFactory?: IDBFactory) {}
+
+  async saveSnapshot(
+    snapshot: RegistrySnapshot,
+    lastSyncedAt = Date.now()
+  ): Promise<StoredSnapshotRecord> {
+    return saveRegistrySnapshot(snapshot, lastSyncedAt, this.customFactory);
   }
 
-  async getLatestSnapshot(): Promise<RegistrySnapshot | null> {
-    // TODO: Retrieve latest cached snapshot from IndexedDB
-    throw new Error("TODO: IndexedDB getLatestSnapshot not implemented");
+  async getLatestSnapshot(): Promise<StoredSnapshotRecord | null> {
+    return getLatestRegistrySnapshot(this.customFactory);
   }
 
-  async saveVoucher(_record: StoredVoucherRecord): Promise<void> {
-    // TODO: Store accepted voucher record in IndexedDB 'vouchers' store
-    throw new Error("TODO: IndexedDB saveVoucher not implemented");
+  async clearSnapshot(): Promise<void> {
+    return clearRegistrySnapshot(this.customFactory);
   }
 
-  async getVouchersByStatus(_status?: StoredVoucherStatus): Promise<StoredVoucherRecord[]> {
-    // TODO: Query vouchers by status index from IndexedDB
-    throw new Error("TODO: IndexedDB getVouchersByStatus not implemented");
+  async saveVoucher(record: StoredVoucherRecord): Promise<void> {
+    const db = await openReaderDatabase(this.customFactory);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_VOUCHERS, "readwrite");
+      const store = tx.objectStore(STORE_VOUCHERS);
+      const req = store.put(record);
+
+      req.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error);
+      };
+    });
+  }
+
+  async getVouchersByStatus(status?: StoredVoucherStatus): Promise<StoredVoucherRecord[]> {
+    const db = await openReaderDatabase(this.customFactory);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_VOUCHERS, "readonly");
+      const store = tx.objectStore(STORE_VOUCHERS);
+
+      let req: IDBRequest;
+      if (status) {
+        const index = store.index("status");
+        req = index.getAll(status);
+      } else {
+        req = store.getAll();
+      }
+
+      req.onsuccess = () => {
+        db.close();
+        resolve((req.result as StoredVoucherRecord[]) || []);
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error);
+      };
+    });
   }
 
   async updateVoucherStatus(
-    _id: string,
-    _status: StoredVoucherStatus,
-    _details?: { txHash?: string; reason?: string }
+    id: string,
+    status: StoredVoucherStatus,
+    details?: { txHash?: string; reason?: string }
   ): Promise<void> {
-    // TODO: Update voucher record status and txHash in IndexedDB
-    throw new Error("TODO: IndexedDB updateVoucherStatus not implemented");
-  }
+    const db = await openReaderDatabase(this.customFactory);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_VOUCHERS, "readwrite");
+      const store = tx.objectStore(STORE_VOUCHERS);
+      const getReq = store.get(id);
 
-  async getLimits(): Promise<MerchantLimits> {
-    // TODO: Load merchant offline exposure limits from IndexedDB
-    throw new Error("TODO: IndexedDB getLimits not implemented");
-  }
+      getReq.onsuccess = () => {
+        const record = getReq.result as StoredVoucherRecord | undefined;
+        if (!record) {
+          db.close();
+          reject(new Error(`Voucher with id '${id}' not found.`));
+          return;
+        }
 
-  async updateLimits(_limits: Partial<MerchantLimits>): Promise<void> {
-    // TODO: Persist merchant offline exposure limits to IndexedDB
-    throw new Error("TODO: IndexedDB updateLimits not implemented");
+        record.status = status;
+        if (details?.txHash) record.txHash = details.txHash;
+        if (details?.reason) record.rejectionReason = details.reason;
+
+        const putReq = store.put(record);
+        putReq.onsuccess = () => {
+          db.close();
+          resolve();
+        };
+        putReq.onerror = () => {
+          db.close();
+          reject(putReq.error);
+        };
+      };
+
+      getReq.onerror = () => {
+        db.close();
+        reject(getReq.error);
+      };
+    });
   }
 }
-
