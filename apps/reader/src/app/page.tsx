@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { MerchantWalletOnboarding } from "../components/MerchantWalletOnboarding";
+import { TrustlineChecker } from "../components/TrustlineChecker";
 
 export default function ReaderHomePage() {
   return (
     <div className="space-y-6">
       <MerchantWalletOnboarding />
+      <TrustlineChecker />
 
       <div className="border border-zinc-800 rounded-lg p-6 bg-zinc-900/50">
         <h1 className="text-2xl font-bold text-zinc-100">Merchant Terminal</h1>

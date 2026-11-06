@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useMerchantWallet } from "../../lib/MerchantWalletContext";
 import { MerchantAddressQR } from "../../components/MerchantAddressQR";
+import { TrustlineChecker } from "../../components/TrustlineChecker";
 
 export default function ReaderSettingsPage() {
   const { merchantAddress, isUnlocked } = useMerchantWallet();
@@ -45,6 +46,8 @@ export default function ReaderSettingsPage() {
               </div>
             )}
           </div>
+
+          <TrustlineChecker />
 
           {/* Limits section */}
           <div className="space-y-4 border-t border-zinc-800 pt-5">
