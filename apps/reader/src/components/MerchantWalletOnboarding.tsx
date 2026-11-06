@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useMerchantWallet } from "../lib/MerchantWalletContext";
+import { MerchantAddressQR } from "./MerchantAddressQR";
 
 export function MerchantWalletOnboarding() {
   const {
@@ -24,6 +25,7 @@ export function MerchantWalletOnboarding() {
   const [secretKey, setSecretKey] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   if (!isLoaded) {
     return (
@@ -133,7 +135,16 @@ export function MerchantWalletOnboarding() {
         </div>
 
         <div className="space-y-1">
-          <span className="text-[10px] text-zinc-500 font-mono block">MERCHANT ADDRESS (PAYEE)</span>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-zinc-500 font-mono block">MERCHANT ADDRESS (PAYEE)</span>
+            <button
+              type="button"
+              onClick={() => setShowQR(!showQR)}
+              className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium"
+            >
+              {showQR ? "Hide Payee QR" : "Show Payee QR"}
+            </button>
+          </div>
           <div className="flex items-center justify-between bg-zinc-950 px-3 py-2 rounded border border-zinc-800 text-xs font-mono">
             <span className="text-zinc-300 truncate mr-2">{merchantAddress}</span>
             <button
@@ -144,6 +155,12 @@ export function MerchantWalletOnboarding() {
             </button>
           </div>
         </div>
+
+        {showQR && (
+          <div className="pt-2">
+            <MerchantAddressQR address={merchantAddress} size={180} />
+          </div>
+        )}
       </div>
     );
   }
