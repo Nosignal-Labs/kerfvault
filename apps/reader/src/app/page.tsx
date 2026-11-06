@@ -1,10 +1,22 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { MerchantWalletOnboarding } from "../components/MerchantWalletOnboarding";
 import { TrustlineChecker } from "../components/TrustlineChecker";
+import {
+  getMerchantSettings,
+  DEFAULT_MERCHANT_SETTINGS,
+  type MerchantSettings,
+} from "../lib/merchantSettings";
 
 export default function ReaderHomePage() {
+  const [settings, setSettings] = useState<MerchantSettings>(DEFAULT_MERCHANT_SETTINGS);
+
+  useEffect(() => {
+    setSettings(getMerchantSettings());
+  }, []);
+
   return (
     <div className="space-y-6">
       <MerchantWalletOnboarding />
@@ -24,8 +36,12 @@ export default function ReaderHomePage() {
           </div>
           <div className="bg-zinc-800/50 p-4 rounded-lg">
             <span className="text-zinc-500 text-xs block uppercase tracking-wider">Offline Limit</span>
-            <span className="text-zinc-200 font-semibold text-base mt-1 block">50.00 USDC / tx</span>
-            <span className="text-zinc-500 text-xs mt-1 block">Max Exposure: 500.00</span>
+            <span className="text-zinc-200 font-semibold text-base mt-1 block font-mono">
+              {settings.maxOfflineVoucherAmountXlm.toFixed(2)} USDC / tx
+            </span>
+            <span className="text-zinc-400 text-xs mt-1 block font-mono">
+              Max Exposure: {settings.maxTotalOfflineExposureXlm.toFixed(2)}
+            </span>
           </div>
         </div>
 
