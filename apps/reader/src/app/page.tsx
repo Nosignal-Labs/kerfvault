@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { MerchantWalletOnboarding } from "../components/MerchantWalletOnboarding";
 
 export default function ReaderHomePage() {
   return (
     <div className="space-y-6">
+      <MerchantWalletOnboarding />
+
       <div className="border border-zinc-800 rounded-lg p-6 bg-zinc-900/50">
         <h1 className="text-2xl font-bold text-zinc-100">Merchant Terminal</h1>
         <p className="text-zinc-400 mt-2">
@@ -39,9 +44,8 @@ export default function ReaderHomePage() {
       </div>
 
       <div className="border border-amber-800/50 bg-amber-950/20 rounded-lg p-4 text-sm text-amber-300">
-        <span className="font-semibold">STUB: </span>
-        {/* TODO: Implement snapshot sync from indexer service and auto-reconnection polling */}
-        Registry synchronization status and offline connection health checker.
+        <span className="font-semibold">Offline Guarantee: </span>
+        Merchant terminal verifies shopper signatures locally against cached registry public keys without needing network access.
       </div>
     </div>
   );
