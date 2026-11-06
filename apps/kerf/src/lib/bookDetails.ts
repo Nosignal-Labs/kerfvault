@@ -6,6 +6,7 @@ import {
 import { getStoredBookById } from "./booksStore";
 import { getStorage } from "./wallet";
 import { DEFAULT_CONTRACT_ID } from "./openBookWorkflow";
+import { syncOfflineBook } from "./offlineSigningStore";
 
 export interface NoteDetail {
   index: number;
@@ -38,6 +39,7 @@ export function stroopsToXlm(stroops: bigint): number {
 /**
  * Loads detailed on-chain book and note states.
  * If offline or Soroban RPC fails, transparently falls back to local cached book data.
+ * Also synchronizes the local offline signing store.
  */
 export async function loadBookDetails(
   bookId: string,
@@ -48,7 +50,8 @@ export async function loadBookDetails(
     storage?: Storage | null;
   }
 ): Promise<BookDetailView> {
-  const cachedBook = getStoredBookById(bookId, options?.storage || getStorage());
+  const targetStorage = options?.storage || getStorage();
+  const cachedBook = getStoredBookById(bookId, targetStorage);
 
   const contractId =
     options?.contractId ||
@@ -93,7 +96,7 @@ export async function loadBookDetails(
     const unspentXlm = openNotes.reduce((sum, n) => sum + n.denominationXlm, 0);
     const redeemedXlm = redeemedNotes.reduce((sum, n) => sum + n.denominationXlm, 0);
 
-    return {
+    const view: BookDetailView = {
       id: bookId,
       owner: onChainBook.owner,
       token: onChainBook.token,
@@ -109,6 +112,11 @@ export async function loadBookDetails(
       redeemedNoteCount: redeemedNotes.length,
       source: "chain",
     };
+
+    // Keep offline signing store updated with latest note states
+    syncOfflineBook(view, { storage: targetStorage, contractId });
+
+    return view;
   } catch (err: unknown) {
     // If on-chain read fails or offline, fall back to cached book if available
     if (cachedBook) {
@@ -120,7 +128,7 @@ export async function loadBookDetails(
         state: "open", // Cached default
       }));
 
-      return {
+      const cachedView: BookDetailView = {
         id: cachedBook.id,
         owner: cachedBook.ownerAddress,
         token: cachedBook.tokenAddress,
@@ -136,6 +144,9 @@ export async function loadBookDetails(
         redeemedNoteCount: 0,
         source: "cache",
       };
+
+      syncOfflineBook(cachedView, { storage: targetStorage, contractId });
+      return cachedView;
     }
 
     const message = err instanceof Error ? err.message : "Failed to load book";

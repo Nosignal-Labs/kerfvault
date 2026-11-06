@@ -6,6 +6,7 @@ import {
 } from "@kerfvault/web-wallet";
 import { type BookConfiguration } from "./bookConfig";
 import { saveStoredBook, type StoredBook } from "./booksStore";
+import { syncOfflineBook } from "./offlineSigningStore";
 
 export const DEFAULT_CONTRACT_ID =
   "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE";
@@ -117,6 +118,9 @@ export async function openBookWorkflow(
 
     saveStoredBook(storedBook, storage);
 
+    // 6. Pre-cache for offline signing
+    syncOfflineBook(storedBook, { storage, contractId });
+
     notify("CONFIRMED", `Success! Book #${bookId} opened on-chain.`, { bookId });
 
     return { bookId, storedBook };
@@ -126,4 +130,3 @@ export async function openBookWorkflow(
     throw err;
   }
 }
-
