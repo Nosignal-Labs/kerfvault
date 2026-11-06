@@ -230,6 +230,12 @@ importers:
       '@kerfvault/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@kerfvault/web-wallet':
+        specifier: workspace:*
+        version: link:../../packages/web-wallet
+      '@stellar/stellar-sdk':
+        specifier: ^17.4.0
+        version: 17.4.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       next:
         specifier: 15.2.0
         version: 15.2.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
