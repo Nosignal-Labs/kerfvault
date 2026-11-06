@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { MerchantWalletOnboarding } from "../components/MerchantWalletOnboarding";
 import { TrustlineChecker } from "../components/TrustlineChecker";
+import { StaleRegistryBanner } from "../components/StaleRegistryBanner";
+import { isRegistryStale } from "../lib/registryStaleness";
 import {
   getMerchantSettings,
   DEFAULT_MERCHANT_SETTINGS,
@@ -64,6 +66,11 @@ export default function ReaderHomePage() {
     <div className="space-y-6">
       <MerchantWalletOnboarding />
       <TrustlineChecker />
+      <StaleRegistryBanner
+        lastSyncedAt={lastSyncTime}
+        onSync={handleSync}
+        isSyncing={isSyncing}
+      />
 
       <div className="border border-zinc-800 rounded-lg p-6 bg-zinc-900/50">
         <h1 className="text-2xl font-bold text-zinc-100">Merchant Terminal</h1>
@@ -101,8 +108,14 @@ export default function ReaderHomePage() {
 
               {snapshot ? (
                 <>
-                  <span className="text-emerald-400 font-semibold text-base mt-1 block">
-                    Registry Synced
+                  <span
+                    className={`font-semibold text-base mt-1 block ${
+                      isRegistryStale(lastSyncTime)
+                        ? "text-amber-400"
+                        : "text-emerald-400"
+                    }`}
+                  >
+                    {isRegistryStale(lastSyncTime) ? "Registry Stale" : "Registry Synced"}
                   </span>
                   <span className="text-zinc-400 text-xs mt-1 block font-mono">
                     Ledger #{snapshot.ledgerSequence} • {bookCount} Book{bookCount === 1 ? "" : "s"}
