@@ -1,6 +1,46 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { getLatestRegistrySnapshot } from "../../lib/storage";
+import { StaleRegistryBanner } from "../../components/StaleRegistryBanner";
+import { fetchRegistrySnapshot } from "../../lib/registryClient";
+import { saveRegistrySnapshot } from "../../lib/storage";
+
 export default function ScanPage() {
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    getLatestRegistrySnapshot()
+      .then((record) => {
+        if (record) {
+          setLastSyncedAt(record.lastSyncedAt);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const snap = await fetchRegistrySnapshot();
+      const saved = await saveRegistrySnapshot(snap, Date.now());
+      setLastSyncedAt(saved.lastSyncedAt);
+    } catch {
+      // noop
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <StaleRegistryBanner
+        lastSyncedAt={lastSyncedAt}
+        onSync={handleSync}
+        isSyncing={isSyncing}
+      />
+
       <div className="border border-zinc-800 rounded-lg p-6 bg-zinc-900/50">
         <h1 className="text-xl font-bold text-zinc-100">Scan Shopper Voucher</h1>
         <p className="text-zinc-400 mt-1 text-sm">
