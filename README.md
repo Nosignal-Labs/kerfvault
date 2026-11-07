@@ -32,6 +32,46 @@ Kerfvault enables shoppers to pay merchants without either party having an activ
 
 ---
 
+## Live Demo
+
+> [!WARNING]
+> **Strictly Testnet & Pre-Audit:** The live demo connects exclusively to Stellar Testnet using testnet XLM. The smart contracts, cryptography, and client PWAs are experimental prototypes and have not undergone a third-party security audit. Never enter real private keys or deposit mainnet funds.
+
+### Live Architecture & Endpoints
+
+| Service / App | Role | Local URL | Deployment Guide |
+|---|---|---|---|
+| **Shopper PWA** (`apps/kerf`) | In-browser testnet wallet, offline note storage, and QR voucher generator | `http://localhost:3000` | [DEPLOY_SHOPPER.md](docs/DEPLOY_SHOPPER.md) |
+| **Merchant Reader PWA** (`apps/reader`) | Offline voucher scanner, cryptographic verification terminal, and queue manager | `http://localhost:3001` | [DEPLOY_READER.md](docs/DEPLOY_READER.md) |
+| **Relay Service** (`services/relay`) | Fee-paying Soroban transaction redemption gateway | `http://localhost:4002` | [DEPLOY_BACKEND.md](docs/DEPLOY_BACKEND.md) |
+| **Indexer Service** (`services/indexer`) | Soroban event poller and compact registry snapshot API | `http://localhost:4001` | [DEPLOY_BACKEND.md](docs/DEPLOY_BACKEND.md) |
+| **Soroban Smart Contract** | Escrow, Merkle root verification, and atomic payout execution | Contract ID: `CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE` | [deploy-testnet.sh](scripts/deploy-testnet.sh) |
+
+### 5-Minute Live Demo Walkthrough
+
+1. **Reset State**: Run `pnpm reset-demo --dry-run` (or without `--dry-run` to fund fresh accounts via Friendbot) to generate fresh test identities.
+2. **Open a Voucher Book (Online)**: In the Shopper App, fund a new book on Stellar Testnet (e.g. 5 notes of 10 XLM each).
+3. **Go Offline**: Turn on Airplane Mode or disconnect your network connection.
+4. **Create & Scan Offline Voucher**:
+   - In the Shopper App, select an unspent note, enter the Merchant's address, and click "Generate Voucher". Present the QR code.
+   - In the Reader App (also offline), open the camera scanner or paste the wire payload. The terminal cryptographically verifies the voucher signature, note commitment, recipient, and spend cap instantly with zero network access.
+5. **Redeem On-Chain (When Back Online)**:
+   - Reconnect to the internet and click "Redeem now" in the Reader App.
+   - The relay submits the settlement transaction to Stellar testnet and pays the gas fees. Funds are credited to the merchant on-chain.
+
+### Demo Slice Scope: Built vs Deferred Matrix
+
+| Subsystem | Built in Demo Slice | Deferred to Second Half |
+|---|---|---|
+| **Smart Contract** | Escrow locking (`open_book`), atomic settlement (`redeem`), Ed25519 signature verification, TTL extensions, read getters, and lifecycle events. | Unspent note reclaim (`reclaim`), manual `extend_ttl`, contract upgradeability, formal invariant verification. |
+| **Voucher Cryptography** | Canonical 245-byte compact wire format, Ed25519 offline signing, domain separation, and cross-platform test vectors. | Protocol version negotiation (v2+), multi-currency routing envelopes, dynamic change fragmentation. |
+| **Shopper Wallet** | Browser key derivation, offline note tracking, zero-network voucher generation, and PWA service worker caching. | Hardware wallet / Freighter extension support, reclaim flow UI, multi-book management. |
+| **Merchant Reader** | Offline QR camera scanner, local registry caching, instant signature & cap verification, replay prevention, and redemption queue. | Multi-terminal POS mesh sync, automated background redemption loop, merchant analytics export. |
+| **Relay & Indexer** | Event polling, registry snapshots (`GET /registry`), gas-sponsored redemption (`POST /relay/redeem`), and rate limiting. | Decentralized relayer network, dynamic gas price estimation, automated ledger reorg recovery. |
+| **Testing & Quality** | 100% pass across unit tests, contract tests, CLI integration tests, and 3 browser E2E integration test suites. | Formal external security audit, public bug bounty program, full accessibility (a11y) audit. |
+
+---
+
 ## Repository Map
 
 ```

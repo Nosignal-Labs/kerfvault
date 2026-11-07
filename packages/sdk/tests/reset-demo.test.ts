@@ -2,7 +2,6 @@ import { describe, it, expect, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { resetDemoState } from "../../../scripts/reset-demo.mjs";
 
 describe("Demo Reset Tool (scripts/reset-demo.mjs)", () => {
   const rootDir = path.resolve(__dirname, "../../..");
@@ -14,8 +13,15 @@ describe("Demo Reset Tool (scripts/reset-demo.mjs)", () => {
     }
   });
 
-  it("successfully generates fresh demo identities and configuration in dry-run mode", async () => {
-    const result = await resetDemoState({ dryRun: true, silent: true });
+  it("successfully generates fresh demo identities and configuration in dry-run mode", () => {
+    const scriptPath = path.join(rootDir, "scripts/reset-demo.mjs");
+    execSync(`node "${scriptPath}" --dry-run`, {
+      encoding: "utf-8",
+      cwd: rootDir,
+    });
+
+    expect(fs.existsSync(scenarioPath)).toBe(true);
+    const result = JSON.parse(fs.readFileSync(scenarioPath, "utf-8"));
 
     expect(result).toBeDefined();
     expect(result.contractId).toBe("CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE");
@@ -31,11 +37,6 @@ describe("Demo Reset Tool (scripts/reset-demo.mjs)", () => {
 
     expect(result.accounts.relay.publicKey).toMatch(/^G[A-Z0-9]{55}$/);
     expect(result.accounts.relay.secretKey).toMatch(/^S[A-Z0-9]{55}$/);
-
-    // Verify .demo-scenario.json was written correctly
-    expect(fs.existsSync(scenarioPath)).toBe(true);
-    const saved = JSON.parse(fs.readFileSync(scenarioPath, "utf-8"));
-    expect(saved.accounts.shopper.publicKey).toBe(result.accounts.shopper.publicKey);
   });
 
   it("can be executed via CLI with --dry-run", () => {

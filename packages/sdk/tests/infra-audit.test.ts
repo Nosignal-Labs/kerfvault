@@ -123,5 +123,18 @@ describe("Infrastructure & Environment Audit", () => {
       expect(nextConfigContent).toContain('key: "Permissions-Policy"');
       expect(nextConfigContent).toContain('value: "camera=(self)"');
     });
+
+    it("verifies root README documents live demo endpoints, scope table, and testnet warning", () => {
+      const readmePath = path.join(rootDir, "README.md");
+      const readmeContent = fs.readFileSync(readmePath, "utf-8");
+
+      expect(readmeContent).toContain("## Live Demo");
+      expect(readmeContent).toContain("Strictly Testnet & Pre-Audit");
+      expect(readmeContent).toContain("http://localhost:3000");
+      expect(readmeContent).toContain("http://localhost:3001");
+      expect(readmeContent).toContain("http://localhost:4002");
+      expect(readmeContent).toContain("CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE");
+      expect(readmeContent).toContain("Demo Slice Scope: Built vs Deferred Matrix");
+    });
   });
 });
