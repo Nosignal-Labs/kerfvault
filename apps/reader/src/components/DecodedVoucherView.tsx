@@ -2,13 +2,19 @@
 
 import React from "react";
 import { DecodedVoucherResult, stroopsToXlm } from "../lib/voucherDecoder";
+import { VoucherSignatureVerificationResult } from "../lib/voucherVerifier";
 
 export interface DecodedVoucherViewProps {
   result: DecodedVoucherResult;
+  sigVerification?: VoucherSignatureVerificationResult | null;
   onReset: () => void;
 }
 
-export function DecodedVoucherView({ result, onReset }: DecodedVoucherViewProps) {
+export function DecodedVoucherView({
+  result,
+  sigVerification,
+  onReset,
+}: DecodedVoucherViewProps) {
   if (!result.valid || !result.voucher) {
     return (
       <div className="space-y-4">
@@ -50,6 +56,50 @@ export function DecodedVoucherView({ result, onReset }: DecodedVoucherViewProps)
 
   return (
     <div className="space-y-4">
+      {sigVerification && (
+        <div
+          className={`p-4 rounded-xl border ${
+            sigVerification.valid
+              ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-200"
+              : "bg-rose-950/40 border-rose-700/60 text-rose-200"
+          } space-y-2`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2">
+              {sigVerification.valid ? (
+                <>
+                  <span className="text-emerald-400">✓</span> Signature Verified
+                </>
+              ) : (
+                <>
+                  <span className="text-rose-400">✕</span> Signature Verification Failed
+                </>
+              )}
+            </span>
+            <span
+              className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
+                sigVerification.valid
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                  : "bg-rose-500/20 text-rose-300 border-rose-500/30"
+              }`}
+            >
+              {sigVerification.valid ? "SIGNATURE MATCH" : (sigVerification.reason ?? "VERIFY_FAILED")}
+            </span>
+          </div>
+
+          {sigVerification.valid ? (
+            <p className="text-xs text-emerald-300">
+              Voucher Ed25519 signature verified against the registry voucher key:{" "}
+              <span className="font-mono font-semibold text-emerald-200 break-all">{sigVerification.voucherKey}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-rose-300">
+              {sigVerification.error ?? "Voucher signature does not match registry key."}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="p-4 bg-emerald-950/30 border border-emerald-800/60 rounded-xl space-y-4">
         <div className="flex items-center justify-between border-b border-emerald-800/40 pb-3">
           <div className="flex items-center gap-2">
