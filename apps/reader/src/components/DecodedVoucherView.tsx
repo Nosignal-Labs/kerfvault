@@ -146,7 +146,14 @@ export function DecodedVoucherView({
         </div>
 
         <div className="p-3 bg-zinc-950/70 border border-zinc-800/80 rounded-lg space-y-1 text-xs">
-          <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Merchant Payee</span>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Merchant Payee</span>
+            {sigVerification?.payeeMatched && (
+              <span className="text-[10px] font-mono text-emerald-400 font-semibold flex items-center gap-1">
+                ✓ Payee Confirmed
+              </span>
+            )}
+          </div>
           <span className="font-mono text-zinc-300 break-all select-all block">{voucher.merchant}</span>
         </div>
 

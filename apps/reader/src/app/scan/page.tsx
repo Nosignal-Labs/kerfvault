@@ -13,9 +13,11 @@ import {
   verifyVoucherSignatureAgainstRegistry,
   VoucherSignatureVerificationResult,
 } from "../../lib/voucherVerifier";
+import { useMerchantWallet } from "../../lib/MerchantWalletContext";
 import { DecodedVoucherView } from "../../components/DecodedVoucherView";
 
 export default function ScanPage() {
+  const { merchantAddress } = useMerchantWallet();
   const [snapshot, setSnapshot] = useState<RegistrySnapshot | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -58,7 +60,8 @@ export default function ScanPage() {
       try {
         const sigRes = await verifyVoucherSignatureAgainstRegistry(
           result.voucher,
-          snapshot
+          snapshot,
+          { merchantAddress: merchantAddress ?? undefined }
         );
         setSigVerification(sigRes);
       } catch (err) {
