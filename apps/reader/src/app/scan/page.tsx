@@ -20,6 +20,8 @@ import {
 import { useMerchantWallet } from "../../lib/MerchantWalletContext";
 import { getMerchantSettings } from "../../lib/merchantSettings";
 import { DecodedVoucherView } from "../../components/DecodedVoucherView";
+import { AcceptedResultView } from "../../components/AcceptedResultView";
+import { RejectedResultView } from "../../components/RejectedResultView";
 
 export default function ScanPage() {
   const { merchantAddress } = useMerchantWallet();
@@ -31,6 +33,7 @@ export default function ScanPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isAccepted, setIsAccepted] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [isDeclined, setIsDeclined] = useState(false);
   const [scanMode, setScanMode] = useState<"camera" | "paste">("camera");
 
   useEffect(() => {
@@ -59,6 +62,7 @@ export default function ScanPage() {
   };
 
   const handleScanSuccess = async (payload: string) => {
+    setIsDeclined(false);
     const result = parseAndGateVoucher(payload);
     setScanResult(result);
 
@@ -119,6 +123,7 @@ export default function ScanPage() {
     setSigVerification(null);
     setIsAccepted(false);
     setIsAccepting(false);
+    setIsDeclined(false);
   };
 
   return (
@@ -142,12 +147,43 @@ export default function ScanPage() {
           </div>
         )}
 
-        {scanResult ? (
+        {isAccepted && scanResult?.voucher ? (
+          <AcceptedResultView
+            voucher={scanResult.voucher}
+            rawPayload={scanResult.rawPayload}
+            onScanNext={handleResetScan}
+          />
+        ) : isDeclined && scanResult?.voucher ? (
+          <RejectedResultView
+            voucher={scanResult.voucher}
+            reason="MerchantDeclined"
+            error="The merchant chose to decline this voucher."
+            rawPayload={scanResult.rawPayload}
+            onScanNext={handleResetScan}
+          />
+        ) : scanResult && !scanResult.valid ? (
+          <RejectedResultView
+            reason="DecodeFailed"
+            error={scanResult.error ?? "Invalid voucher payload"}
+            rawPayload={scanResult.rawPayload}
+            onScanNext={handleResetScan}
+          />
+        ) : scanResult && sigVerification && !sigVerification.valid ? (
+          <RejectedResultView
+            voucher={scanResult.voucher}
+            reason={sigVerification.reason}
+            error={sigVerification.error}
+            rawPayload={scanResult.rawPayload}
+            onScanNext={handleResetScan}
+            onSyncRegistry={handleSync}
+          />
+        ) : scanResult ? (
           <DecodedVoucherView
             result={scanResult}
             sigVerification={sigVerification}
             onReset={handleResetScan}
             onAccept={handleAcceptVoucher}
+            onDecline={() => setIsDeclined(true)}
             isAccepted={isAccepted}
             isAccepting={isAccepting}
           />
