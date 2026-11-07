@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "apps/*"
   - "services/*"
+  - "e2e"
 
 allowBuilds:
   esbuild: true
