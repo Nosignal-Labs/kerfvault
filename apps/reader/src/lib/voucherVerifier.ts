@@ -5,6 +5,7 @@ import {
   type RegistryNoteStatus,
   verifyVoucher,
 } from "@kerfvault/sdk";
+import { stroopsToXlm } from "./voucherDecoder";
 
 export interface VoucherSignatureVerificationResult {
   valid: boolean;
@@ -13,6 +14,8 @@ export interface VoucherSignatureVerificationResult {
   payeeMatched?: boolean;
   noteStatus?: RegistryNoteStatus;
   noteIsOpen?: boolean;
+  withinMerchantCap?: boolean;
+  maxCapLimitXlm?: number;
   reason?: string;
   error?: string;
 }
@@ -20,6 +23,7 @@ export interface VoucherSignatureVerificationResult {
 export interface VerifySignatureOptions {
   currentTimestamp?: bigint;
   merchantAddress?: string;
+  maxCapLimit?: bigint;
 }
 
 /**
@@ -98,11 +102,52 @@ export function checkNoteOpenStatus(
 }
 
 /**
- * Verifies a scanned voucher against the local registry snapshot:
+ * Validates voucher cap and amount bounds against the merchant's configured offline limit.
+ */
+export function checkMerchantCapLimit(
+  voucherAmount: bigint,
+  voucherCap: bigint,
+  maxCapLimit?: bigint
+): { withinCap: boolean; error?: string } {
+  if (voucherAmount > voucherCap) {
+    return {
+      withinCap: false,
+      error: `Amount exceeds cap: Voucher amount (${stroopsToXlm(voucherAmount)} XLM) cannot exceed its cap (${stroopsToXlm(voucherCap)} XLM).`,
+    };
+  }
+
+  if (voucherAmount <= 0n) {
+    return {
+      withinCap: false,
+      error: `Invalid amount: Voucher amount must be greater than zero.`,
+    };
+  }
+
+  if (maxCapLimit !== undefined) {
+    if (voucherCap > maxCapLimit) {
+      return {
+        withinCap: false,
+        error: `Cap exceeds merchant limit: Voucher cap (${stroopsToXlm(voucherCap)} XLM) exceeds merchant terminal limit (${stroopsToXlm(maxCapLimit)} XLM).`,
+      };
+    }
+    if (voucherAmount > maxCapLimit) {
+      return {
+        withinCap: false,
+        error: `Amount exceeds merchant limit: Voucher amount (${stroopsToXlm(voucherAmount)} XLM) exceeds merchant terminal limit (${stroopsToXlm(maxCapLimit)} XLM).`,
+      };
+    }
+  }
+
+  return { withinCap: true };
+}
+
+/**
+ * Verifies a scanned voucher against the local registry snapshot and merchant limits:
  * 1. Checks voucher expiry (acceptUntil) and book expiry (redeemDeadline).
  * 2. Confirms that the target note in the book is currently "Open" (rejects redeemed notes).
  * 3. Confirms that this merchant terminal is the named payee.
- * 4. Cryptographically matches the Ed25519 signature to the book's registered voucherKey.
+ * 4. Holds every voucher to the merchant terminal's own offline cap limit.
+ * 5. Cryptographically matches the Ed25519 signature to the book's registered voucherKey.
  *
  * Guaranteed 100% offline with zero network calls.
  * Reference: docs/VOUCHER_SPEC.md & docs/THREAT_MODEL.md
@@ -196,11 +241,30 @@ export async function verifyVoucherSignatureAgainstRegistry(
     }
   }
 
-  // 4. Cryptographically verify the voucher signature using the book's registered voucherKey
+  // 4. Merchant offline cap limit check
+  const capCheck = checkMerchantCapLimit(voucher.amount, voucher.cap, options?.maxCapLimit);
+  if (!capCheck.withinCap) {
+    const isCapViolation = options?.maxCapLimit !== undefined && voucher.cap > options.maxCapLimit;
+    return {
+      valid: false,
+      reason: isCapViolation ? "CapExceedsMerchantLimit" : "AmountExceedsCap",
+      voucherKey: book.voucherKey,
+      bookId: bookIdStr,
+      withinMerchantCap: false,
+      maxCapLimitXlm: options?.maxCapLimit ? stroopsToXlm(options.maxCapLimit) : undefined,
+      noteStatus: noteCheck.status,
+      noteIsOpen: true,
+      payeeMatched: !options?.merchantAddress || voucher.merchant === options.merchantAddress,
+      error: capCheck.error,
+    };
+  }
+
+  // 5. Cryptographically verify the voucher signature using the book's registered voucherKey
   const verifyRes = await verifyVoucher(voucher, {
     voucherKey: book.voucherKey,
     expectedContractId: snapshot.contractId || voucher.contractId,
     merchantAddress: options?.merchantAddress,
+    maxCapLimit: options?.maxCapLimit,
     currentTimestamp: options?.currentTimestamp,
   });
 
@@ -212,6 +276,8 @@ export async function verifyVoucherSignatureAgainstRegistry(
       friendlyError = `Merchant payee mismatch: Voucher payee (${voucher.merchant}) does not match this terminal (${options?.merchantAddress}).`;
     } else if (verifyRes.reason === "VoucherExpired") {
       friendlyError = `Voucher expired: Accept deadline has passed.`;
+    } else if (verifyRes.reason === "CapExceedsMerchantLimit") {
+      friendlyError = `Cap exceeds merchant limit: Voucher cap exceeds merchant terminal offline cap limit.`;
     } else if (verifyRes.reason === "ContractMismatch") {
       friendlyError = `Contract ID mismatch: Voucher contract (${voucher.contractId}) does not match registry contract (${snapshot.contractId}).`;
     } else if (verifyRes.reason) {
@@ -224,6 +290,7 @@ export async function verifyVoucherSignatureAgainstRegistry(
       voucherKey: book.voucherKey,
       bookId: bookIdStr,
       payeeMatched: verifyRes.reason !== "MerchantMismatch",
+      withinMerchantCap: verifyRes.reason !== "CapExceedsMerchantLimit",
       noteStatus: noteCheck.status,
       noteIsOpen: true,
       error: friendlyError,
@@ -236,6 +303,8 @@ export async function verifyVoucherSignatureAgainstRegistry(
     bookId: bookIdStr,
     noteStatus: noteCheck.status,
     noteIsOpen: true,
+    withinMerchantCap: true,
+    maxCapLimitXlm: options?.maxCapLimit ? stroopsToXlm(options.maxCapLimit) : undefined,
     payeeMatched: Boolean(options?.merchantAddress && voucher.merchant === options.merchantAddress),
   };
 }

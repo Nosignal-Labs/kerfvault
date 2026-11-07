@@ -147,7 +147,18 @@ export function DecodedVoucherView({
           </div>
 
           <div className="p-3 bg-zinc-950/70 border border-zinc-800/80 rounded-lg space-y-1">
-            <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Maximum Cap</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Maximum Cap</span>
+              {sigVerification?.withinMerchantCap !== undefined && (
+                <span
+                  className={`text-[10px] font-mono font-medium ${
+                    sigVerification.withinMerchantCap ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {sigVerification.withinMerchantCap ? "✓ Within Cap" : "Exceeds Limit"}
+                </span>
+              )}
+            </div>
             <div className="flex items-baseline gap-1">
               <span className="text-base font-bold text-zinc-200">{stroopsToXlm(voucher.cap)}</span>
               <span className="text-xs text-zinc-400">XLM</span>

@@ -14,6 +14,7 @@ import {
   VoucherSignatureVerificationResult,
 } from "../../lib/voucherVerifier";
 import { useMerchantWallet } from "../../lib/MerchantWalletContext";
+import { getMerchantSettings } from "../../lib/merchantSettings";
 import { DecodedVoucherView } from "../../components/DecodedVoucherView";
 
 export default function ScanPage() {
@@ -58,10 +59,18 @@ export default function ScanPage() {
     if (result.valid && result.voucher) {
       setIsVerifying(true);
       try {
+        const settings = getMerchantSettings();
+        const maxCapLimitStroops = BigInt(
+          Math.round(settings.maxOfflineVoucherAmountXlm * 10_000_000)
+        );
+
         const sigRes = await verifyVoucherSignatureAgainstRegistry(
           result.voucher,
           snapshot,
-          { merchantAddress: merchantAddress ?? undefined }
+          {
+            merchantAddress: merchantAddress ?? undefined,
+            maxCapLimit: maxCapLimitStroops,
+          }
         );
         setSigVerification(sigRes);
       } catch (err) {
