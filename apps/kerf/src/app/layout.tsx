@@ -36,6 +36,9 @@ export default function RootLayout({
               <Link href="/pay" className="hover:text-zinc-200">
                 Pay
               </Link>
+              <Link href="/how-it-works" className="hover:text-zinc-200">
+                How it works
+              </Link>
               <Link href="/settings" className="hover:text-zinc-200">
                 Settings
               </Link>
