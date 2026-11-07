@@ -236,6 +236,9 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^17.4.0
         version: 17.4.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      html5-qrcode:
+        specifier: ^2.3.8
+        version: 2.3.8
       next:
         specifier: 15.2.0
         version: 15.2.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2089,6 +2092,9 @@ packages:
   hasown@2.0.4:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
+
+  html5-qrcode@2.3.8:
+    resolution: {integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==}
 
   https-proxy-agent@5.0.1:
     resolution: {integrity: sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==}
@@ -4742,6 +4748,8 @@ snapshots:
   hasown@2.0.4:
     dependencies:
       function-bind: 1.1.2
+
+  html5-qrcode@2.3.8: {}
 
   https-proxy-agent@5.0.1(supports-color@7.2.0):
     dependencies:
