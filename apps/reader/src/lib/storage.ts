@@ -15,6 +15,7 @@ export type StoredVoucherStatus =
 export interface StoredVoucherRecord {
   id: string;
   voucher: OfflineVoucher;
+  rawWirePayload?: string;
   receivedAt: number;
   status: StoredVoucherStatus;
   txHash?: string;
@@ -40,6 +41,7 @@ export interface IReaderStorage {
 
   // Voucher operations
   saveVoucher(record: StoredVoucherRecord): Promise<void>;
+  getVoucher(id: string): Promise<StoredVoucherRecord | null>;
   getVouchersByStatus(status?: StoredVoucherStatus): Promise<StoredVoucherRecord[]>;
   updateVoucherStatus(
     id: string,
@@ -177,7 +179,7 @@ export async function clearRegistrySnapshot(customFactory?: IDBFactory): Promise
  * Full IndexedDB reader storage implementation implementing IReaderStorage.
  */
 export class IndexedDBReaderStorage implements IReaderStorage {
-  constructor(private customFactory?: IDBFactory) {}
+  constructor(private customFactory?: IDBFactory) { }
 
   async saveSnapshot(
     snapshot: RegistrySnapshot,
@@ -210,6 +212,10 @@ export class IndexedDBReaderStorage implements IReaderStorage {
         reject(req.error);
       };
     });
+  }
+
+  async getVoucher(id: string): Promise<StoredVoucherRecord | null> {
+    return getVoucherRecord(id, this.customFactory);
   }
 
   async getVouchersByStatus(status?: StoredVoucherStatus): Promise<StoredVoucherRecord[]> {
@@ -277,4 +283,152 @@ export class IndexedDBReaderStorage implements IReaderStorage {
       };
     });
   }
+}
+
+/**
+ * Derives the unique record ID for a voucher note in reader storage.
+ */
+export function getVoucherRecordId(
+  bookId: bigint | string | number,
+  noteIndex: number
+): string {
+  return `${bookId.toString()}:${noteIndex}`;
+}
+
+/**
+ * Saves a voucher record directly into IndexedDB.
+ */
+export async function saveVoucherRecord(
+  record: StoredVoucherRecord,
+  customFactory?: IDBFactory
+): Promise<void> {
+  const db = await openReaderDatabase(customFactory);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_VOUCHERS, "readwrite");
+    const store = tx.objectStore(STORE_VOUCHERS);
+    const req = store.put(record);
+
+    req.onsuccess = () => {
+      db.close();
+      resolve();
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to save voucher record to IndexedDB."));
+    };
+  });
+}
+
+/**
+ * Retrieves a single stored voucher record by its record ID.
+ */
+export async function getVoucherRecord(
+  id: string,
+  customFactory?: IDBFactory
+): Promise<StoredVoucherRecord | null> {
+  const db = await openReaderDatabase(customFactory);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_VOUCHERS, "readonly");
+    const store = tx.objectStore(STORE_VOUCHERS);
+    const req = store.get(id);
+
+    req.onsuccess = () => {
+      db.close();
+      resolve((req.result as StoredVoucherRecord) || null);
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to get voucher record from IndexedDB."));
+    };
+  });
+}
+
+/**
+ * Checks whether a voucher (bookId + noteIndex) has already been accepted on this terminal.
+ * Returns true if an active voucher record exists with status not equal to "Rejected".
+ */
+export async function isVoucherAlreadyAccepted(
+  bookId: bigint | string | number,
+  noteIndex: number,
+  customFactory?: IDBFactory
+): Promise<boolean> {
+  const id = getVoucherRecordId(bookId, noteIndex);
+  const record = await getVoucherRecord(id, customFactory);
+  if (!record) return false;
+  return record.status !== "Rejected";
+}
+
+/**
+ * Records an accepted offline voucher in IndexedDB with initial status "AcceptedOffline".
+ * Throws if the voucher has already been accepted.
+ */
+export async function recordAcceptedVoucher(
+  voucher: OfflineVoucher,
+  rawWirePayload?: string,
+  customFactory?: IDBFactory
+): Promise<StoredVoucherRecord> {
+  const id = getVoucherRecordId(voucher.bookId, voucher.noteIndex);
+  const alreadyAccepted = await isVoucherAlreadyAccepted(voucher.bookId, voucher.noteIndex, customFactory);
+  if (alreadyAccepted) {
+    throw new Error(
+      `Cannot accept voucher: Book #${voucher.bookId.toString()} Note #${voucher.noteIndex} has already been accepted.`
+    );
+  }
+
+  const record: StoredVoucherRecord = {
+    id,
+    voucher,
+    rawWirePayload,
+    receivedAt: Date.now(),
+    status: "AcceptedOffline",
+  };
+
+  await saveVoucherRecord(record, customFactory);
+  return record;
+}
+
+/**
+ * Retrieves all stored voucher records from IndexedDB.
+ */
+export async function getAllStoredVouchers(
+  customFactory?: IDBFactory
+): Promise<StoredVoucherRecord[]> {
+  const db = await openReaderDatabase(customFactory);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_VOUCHERS, "readonly");
+    const store = tx.objectStore(STORE_VOUCHERS);
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      db.close();
+      resolve((req.result as StoredVoucherRecord[]) || []);
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to get all vouchers from IndexedDB."));
+    };
+  });
+}
+
+/**
+ * Clears all voucher records from IndexedDB.
+ */
+export async function clearAllStoredVouchers(
+  customFactory?: IDBFactory
+): Promise<void> {
+  const db = await openReaderDatabase(customFactory);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_VOUCHERS, "readwrite");
+    const store = tx.objectStore(STORE_VOUCHERS);
+    const req = store.clear();
+
+    req.onsuccess = () => {
+      db.close();
+      resolve();
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Failed to clear vouchers from IndexedDB."));
+    };
+  });
 }

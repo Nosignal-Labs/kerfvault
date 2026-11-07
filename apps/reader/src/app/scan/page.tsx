@@ -2,10 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import type { RegistrySnapshot } from "@kerfvault/sdk";
-import { getLatestRegistrySnapshot } from "../../lib/storage";
+import {
+  getLatestRegistrySnapshot,
+  saveRegistrySnapshot,
+  isVoucherAlreadyAccepted,
+  recordAcceptedVoucher,
+} from "../../lib/storage";
 import { StaleRegistryBanner } from "../../components/StaleRegistryBanner";
 import { fetchRegistrySnapshot } from "../../lib/registryClient";
-import { saveRegistrySnapshot } from "../../lib/storage";
 import { CameraQRScanner } from "../../components/CameraQRScanner";
 import { PastePayloadInput } from "../../components/PastePayloadInput";
 import { parseAndGateVoucher, DecodedVoucherResult } from "../../lib/voucherDecoder";
@@ -25,6 +29,8 @@ export default function ScanPage() {
   const [scanResult, setScanResult] = useState<DecodedVoucherResult | null>(null);
   const [sigVerification, setSigVerification] = useState<VoucherSignatureVerificationResult | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isAccepted, setIsAccepted] = useState(false);
+  const [isAccepting, setIsAccepting] = useState(false);
   const [scanMode, setScanMode] = useState<"camera" | "paste">("camera");
 
   useEffect(() => {
@@ -64,12 +70,19 @@ export default function ScanPage() {
           Math.round(settings.maxOfflineVoucherAmountXlm * 10_000_000)
         );
 
+        const alreadyAccepted = await isVoucherAlreadyAccepted(
+          result.voucher.bookId,
+          result.voucher.noteIndex
+        );
+        setIsAccepted(alreadyAccepted);
+
         const sigRes = await verifyVoucherSignatureAgainstRegistry(
           result.voucher,
           snapshot,
           {
             merchantAddress: merchantAddress ?? undefined,
             maxCapLimit: maxCapLimitStroops,
+            isAlreadyAccepted: alreadyAccepted,
           }
         );
         setSigVerification(sigRes);
@@ -84,12 +97,28 @@ export default function ScanPage() {
       }
     } else {
       setSigVerification(null);
+      setIsAccepted(false);
+    }
+  };
+
+  const handleAcceptVoucher = async () => {
+    if (!scanResult?.voucher || !sigVerification?.valid) return;
+    setIsAccepting(true);
+    try {
+      await recordAcceptedVoucher(scanResult.voucher, scanResult.rawPayload);
+      setIsAccepted(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsAccepting(false);
     }
   };
 
   const handleResetScan = () => {
     setScanResult(null);
     setSigVerification(null);
+    setIsAccepted(false);
+    setIsAccepting(false);
   };
 
   return (
@@ -118,6 +147,9 @@ export default function ScanPage() {
             result={scanResult}
             sigVerification={sigVerification}
             onReset={handleResetScan}
+            onAccept={handleAcceptVoucher}
+            isAccepted={isAccepted}
+            isAccepting={isAccepting}
           />
         ) : (
           <div className="space-y-6">
