@@ -8,12 +8,18 @@ export interface DecodedVoucherViewProps {
   result: DecodedVoucherResult;
   sigVerification?: VoucherSignatureVerificationResult | null;
   onReset: () => void;
+  onAccept?: () => Promise<void> | void;
+  isAccepted?: boolean;
+  isAccepting?: boolean;
 }
 
 export function DecodedVoucherView({
   result,
   sigVerification,
   onReset,
+  onAccept,
+  isAccepted = false,
+  isAccepting = false,
 }: DecodedVoucherViewProps) {
   if (!result.valid || !result.voucher) {
     return (
@@ -56,11 +62,29 @@ export function DecodedVoucherView({
 
   return (
     <div className="space-y-4">
+      {isAccepted && (
+        <div className="p-4 rounded-xl border bg-emerald-950/40 border-emerald-600/70 text-emerald-200 space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2">
+              <span className="text-emerald-400">✓</span> Voucher Accepted
+            </span>
+            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+              ACCEPTED_OFFLINE
+            </span>
+          </div>
+          <p className="text-xs text-emerald-300">
+            This voucher has been accepted offline and safely stored in your local queue ready for relay redemption.
+          </p>
+        </div>
+      )}
+
       {sigVerification && (
         <div
           className={`p-4 rounded-xl border ${
             sigVerification.valid
               ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-200"
+              : sigVerification.reason === "RepeatScan"
+              ? "bg-amber-950/40 border-amber-600/70 text-amber-200"
               : "bg-rose-950/40 border-rose-700/60 text-rose-200"
           } space-y-2`}
         >
@@ -69,6 +93,10 @@ export function DecodedVoucherView({
               {sigVerification.valid ? (
                 <>
                   <span className="text-emerald-400">✓</span> Signature Verified
+                </>
+              ) : sigVerification.reason === "RepeatScan" ? (
+                <>
+                  <span className="text-amber-400">⚠</span> Repeat Scan Refused
                 </>
               ) : (
                 <>
@@ -80,10 +108,16 @@ export function DecodedVoucherView({
               className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded border ${
                 sigVerification.valid
                   ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                  : sigVerification.reason === "RepeatScan"
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
                   : "bg-rose-500/20 text-rose-300 border-rose-500/30"
               }`}
             >
-              {sigVerification.valid ? "SIGNATURE MATCH" : (sigVerification.reason ?? "VERIFY_FAILED")}
+              {sigVerification.valid
+                ? "SIGNATURE MATCH"
+                : sigVerification.reason === "RepeatScan"
+                ? "REPEAT_SCAN_REFUSED"
+                : (sigVerification.reason ?? "VERIFY_FAILED")}
             </span>
           </div>
 
@@ -93,7 +127,11 @@ export function DecodedVoucherView({
               <span className="font-mono font-semibold text-emerald-200 break-all">{sigVerification.voucherKey}</span>
             </p>
           ) : (
-            <p className="text-xs text-rose-300">
+            <p
+              className={`text-xs ${
+                sigVerification.reason === "RepeatScan" ? "text-amber-300 font-medium" : "text-rose-300"
+              }`}
+            >
               {sigVerification.error ?? "Voucher signature does not match registry key."}
             </p>
           )}
@@ -204,12 +242,35 @@ export function DecodedVoucherView({
       </div>
 
       <div className="flex gap-3">
+        {sigVerification?.valid && !isAccepted && onAccept && (
+          <button
+            type="button"
+            onClick={onAccept}
+            disabled={isAccepting}
+            className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
+          >
+            {isAccepting ? (
+              <>
+                <span className="animate-spin">◌</span>
+                <span>Accepting...</span>
+              </>
+            ) : (
+              <>
+                <span>✓</span>
+                <span>Accept & Queue Voucher</span>
+              </>
+            )}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onReset}
-          className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition"
+          className={`${
+            sigVerification?.valid && !isAccepted && onAccept ? "w-1/3" : "w-full"
+          } py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition`}
         >
-          Scan / Enter Another Voucher
+          {isAccepted ? "Scan Next Voucher" : "Scan / Enter Another Voucher"}
         </button>
       </div>
     </div>

@@ -16,6 +16,7 @@ export interface VoucherSignatureVerificationResult {
   noteIsOpen?: boolean;
   withinMerchantCap?: boolean;
   maxCapLimitXlm?: number;
+  isRepeatScan?: boolean;
   reason?: string;
   error?: string;
 }
@@ -24,6 +25,59 @@ export interface VerifySignatureOptions {
   currentTimestamp?: bigint;
   merchantAddress?: string;
   maxCapLimit?: bigint;
+  isAlreadyAccepted?: boolean;
+  acceptedRecordsOrIds?: Array<{ id?: string; status?: string }> | Set<string> | string[];
+}
+
+export interface CheckRepeatScanResult {
+  isRepeat: boolean;
+  existingStatus?: string;
+  error?: string;
+}
+
+/**
+ * Checks if a voucher has already been accepted on this terminal.
+ */
+export function checkVoucherRepeatScan(
+  bookId: bigint | string | number,
+  noteIndex: number,
+  acceptedRecordsOrIds?: Array<{ id?: string; status?: string }> | Set<string> | string[]
+): CheckRepeatScanResult {
+  if (!acceptedRecordsOrIds) return { isRepeat: false };
+  const targetId = `${bookId.toString()}:${noteIndex}`;
+
+  if (acceptedRecordsOrIds instanceof Set) {
+    if (acceptedRecordsOrIds.has(targetId)) {
+      return {
+        isRepeat: true,
+        error: `Repeat scan refused: Voucher (Book #${bookId.toString()}, Note #${noteIndex}) has already been accepted on this terminal.`,
+      };
+    }
+    return { isRepeat: false };
+  }
+
+  if (Array.isArray(acceptedRecordsOrIds)) {
+    for (const item of acceptedRecordsOrIds) {
+      if (typeof item === "string") {
+        if (item === targetId) {
+          return {
+            isRepeat: true,
+            error: `Repeat scan refused: Voucher (Book #${bookId.toString()}, Note #${noteIndex}) has already been accepted on this terminal.`,
+          };
+        }
+      } else if (item && typeof item === "object") {
+        if (item.id === targetId && item.status !== "Rejected") {
+          return {
+            isRepeat: true,
+            existingStatus: item.status,
+            error: `Repeat scan refused: Voucher (Book #${bookId.toString()}, Note #${noteIndex}) has already been accepted on this terminal (${item.status ?? "Accepted"}).`,
+          };
+        }
+      }
+    }
+  }
+
+  return { isRepeat: false };
 }
 
 /**
@@ -186,7 +240,37 @@ export async function verifyVoucherSignatureAgainstRegistry(
     };
   }
 
-  // 1. Expiry check: reject expired vouchers
+  // 1. Repeat scan check: refuse repeat scans of already accepted vouchers
+  if (options?.isAlreadyAccepted) {
+    return {
+      valid: false,
+      reason: "RepeatScan",
+      voucherKey: book.voucherKey,
+      bookId: bookIdStr,
+      isRepeatScan: true,
+      error: `Repeat scan refused: Voucher (Book #${bookIdStr}, Note #${voucher.noteIndex}) has already been accepted on this terminal.`,
+    };
+  }
+
+  if (options?.acceptedRecordsOrIds) {
+    const repeatCheck = checkVoucherRepeatScan(
+      voucher.bookId,
+      voucher.noteIndex,
+      options.acceptedRecordsOrIds
+    );
+    if (repeatCheck.isRepeat) {
+      return {
+        valid: false,
+        reason: "RepeatScan",
+        voucherKey: book.voucherKey,
+        bookId: bookIdStr,
+        isRepeatScan: true,
+        error: repeatCheck.error,
+      };
+    }
+  }
+
+  // 2. Expiry check: reject expired vouchers
   const expiryCheck = checkVoucherExpiry(voucher.acceptUntil, options?.currentTimestamp);
   if (expiryCheck.expired) {
     return {
