@@ -76,18 +76,26 @@ export default function HowItWorksPage() {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-zinc-800 flex flex-wrap gap-3">
+        <div className="pt-4 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-3">
+            <Link
+              href="/books/new"
+              className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded font-medium text-sm transition"
+            >
+              Open a Demo Book
+            </Link>
+            <Link
+              href="/pay"
+              className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 rounded font-medium text-sm text-zinc-200 transition"
+            >
+              Create Voucher
+            </Link>
+          </div>
           <Link
-            href="/books/new"
-            className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded font-medium text-sm transition"
+            href="/limitations"
+            className="text-xs text-amber-400 hover:text-amber-300 underline font-medium"
           >
-            Open a Demo Book
-          </Link>
-          <Link
-            href="/pay"
-            className="px-4 py-2 border border-zinc-700 hover:border-zinc-500 rounded font-medium text-sm text-zinc-200 transition"
-          >
-            Create Voucher
+            View Known Limitations →
           </Link>
         </div>
       </div>

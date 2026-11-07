@@ -25,6 +25,7 @@ export default function RootLayout({
               <Link href="/scan" className="hover:text-zinc-200">Scan</Link>
               <Link href="/accepted" className="hover:text-zinc-200">Vouchers</Link>
               <Link href="/how-it-works" className="hover:text-zinc-200">How it works</Link>
+              <Link href="/limitations" className="hover:text-zinc-200">Limitations</Link>
               <Link href="/settings" className="hover:text-zinc-200">Settings</Link>
             </nav>
           </header>
