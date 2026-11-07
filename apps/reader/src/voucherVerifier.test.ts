@@ -4,7 +4,10 @@ import { renderToString } from "react-dom/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { signVoucher, type RegistrySnapshot } from "@kerfvault/sdk";
 import { parseAndGateVoucher } from "./lib/voucherDecoder";
-import { verifyVoucherSignatureAgainstRegistry } from "./lib/voucherVerifier";
+import {
+  verifyVoucherSignatureAgainstRegistry,
+  confirmMerchantPayee,
+} from "./lib/voucherVerifier";
 import { DecodedVoucherView } from "./components/DecodedVoucherView";
 
 describe("Voucher Signature Verification Against Registry Voucher Key", () => {
@@ -162,6 +165,69 @@ describe("Voucher Signature Verification Against Registry Voucher Key", () => {
     expect(res.reason).toBe("InvalidSignature");
   });
 
+  describe("confirmMerchantPayee", () => {
+    it("rejects when terminal merchant address is null", () => {
+      const res = confirmMerchantPayee(merchantAddress, null);
+      expect(res.matches).toBe(false);
+      expect(res.error).toContain("not configured");
+    });
+
+    it("rejects when voucher payee does not match terminal merchant address", () => {
+      const otherMerchant = "GBEXAMPLEOTHERMERCHANT1234567890...";
+      const res = confirmMerchantPayee(otherMerchant, merchantAddress);
+      expect(res.matches).toBe(false);
+      expect(res.error).toContain("Merchant payee mismatch");
+    });
+
+    it("confirms when voucher payee exactly matches terminal merchant address", () => {
+      const res = confirmMerchantPayee(merchantAddress, merchantAddress);
+      expect(res.matches).toBe(true);
+      expect(res.error).toBeUndefined();
+    });
+  });
+
+  describe("Payee Confirmation in verifyVoucherSignatureAgainstRegistry", () => {
+    it("confirms payee and returns payeeMatched: true when address matches", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 1,
+        merchant: merchantAddress,
+        amount: 20_000_000n,
+        cap: 50_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, mockSnapshot, {
+        merchantAddress,
+      });
+      expect(res.valid).toBe(true);
+      expect(res.payeeMatched).toBe(true);
+    });
+
+    it("rejects voucher with MerchantMismatch when terminal address differs from voucher payee", async () => {
+      const otherMerchant = "GBDIFFERENTMERCHANTADDR777777777...";
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 1,
+        merchant: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWAC",
+        amount: 20_000_000n,
+        cap: 50_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, mockSnapshot, {
+        merchantAddress: otherMerchant,
+      });
+      expect(res.valid).toBe(false);
+      expect(res.reason).toBe("MerchantMismatch");
+      expect(res.error).toContain("Merchant payee mismatch");
+    });
+  });
+
   describe("DecodedVoucherView with Signature Verification Display", () => {
     it("renders green verified banner when signature matches registry", async () => {
       const voucher = await signVoucher({
@@ -198,6 +264,42 @@ describe("Voucher Signature Verification Against Registry Voucher Key", () => {
       expect(html).toContain("Signature Verified");
       expect(html).toContain("SIGNATURE MATCH");
       expect(html).toContain(voucherPublicKey);
+    });
+
+    it("renders Payee Confirmed badge when payeeMatched: true", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 1,
+        merchant: merchantAddress,
+        amount: 20_000_000n,
+        cap: 50_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const decodeRes = {
+        valid: true,
+        voucher,
+        rawPayload: "dummy_wire_payload",
+      };
+
+      const sigRes = {
+        valid: true,
+        voucherKey: voucherPublicKey,
+        bookId: "100",
+        payeeMatched: true,
+      };
+
+      const html = renderToString(
+        React.createElement(DecodedVoucherView, {
+          result: decodeRes,
+          sigVerification: sigRes,
+          onReset: vi.fn(),
+        })
+      );
+
+      expect(html).toContain("Payee Confirmed");
     });
 
     it("renders red failure banner when signature verification fails", async () => {
