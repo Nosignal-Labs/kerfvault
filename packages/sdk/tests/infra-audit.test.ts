@@ -162,5 +162,23 @@ describe("Infrastructure & Environment Audit", () => {
       expect(roadmapContent).toContain("Wave 8: Smart Contract Hardening, Reclaim Flow & TTL Management");
       expect(roadmapContent).toContain("Wave 13: External Audits, Formal Verification & Mainnet Launch");
     });
+
+    it("verifies release notes and changelog exist for v0.1.0-demo", () => {
+      const releaseNotesPath = path.join(rootDir, "docs/RELEASE_NOTES_v0.1.0-demo.md");
+      expect(fs.existsSync(releaseNotesPath)).toBe(true);
+
+      const releaseNotes = fs.readFileSync(releaseNotesPath, "utf-8");
+      expect(releaseNotes).toContain("# KerfVault v0.1.0-demo Release Notes");
+      expect(releaseNotes).toContain("Release Tag: `v0.1.0-demo`");
+      expect(releaseNotes).toContain("Phases S1–S7 Complete");
+
+      const changelogPath = path.join(rootDir, "CHANGELOG.md");
+      expect(fs.existsSync(changelogPath)).toBe(true);
+      const changelog = fs.readFileSync(changelogPath, "utf-8");
+      expect(changelog).toContain("## [0.1.0-demo]");
+
+      const pkgJson = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8"));
+      expect(pkgJson.version).toBe("0.1.0-demo");
+    });
   });
 });
