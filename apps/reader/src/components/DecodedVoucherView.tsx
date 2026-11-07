@@ -122,7 +122,18 @@ export function DecodedVoucherView({
           </div>
 
           <div className="p-3 bg-zinc-950/70 border border-zinc-800/80 rounded-lg space-y-1">
-            <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Note Index</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Note Index</span>
+              {sigVerification?.noteStatus && (
+                <span
+                  className={`text-[10px] font-mono font-medium ${
+                    sigVerification.noteIsOpen ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {sigVerification.noteIsOpen ? "✓ Open" : sigVerification.noteStatus}
+                </span>
+              )}
+            </div>
             <span className="font-mono text-zinc-200 font-semibold">#{voucher.noteIndex}</span>
           </div>
 
