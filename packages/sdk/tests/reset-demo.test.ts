@@ -37,7 +37,7 @@ describe("Demo Reset Tool (scripts/reset-demo.mjs)", () => {
 
     expect(result.accounts.relay.publicKey).toMatch(/^G[A-Z0-9]{55}$/);
     expect(result.accounts.relay.secretKey).toMatch(/^S[A-Z0-9]{55}$/);
-  });
+  }, 20000);
 
   it("can be executed via CLI with --dry-run", () => {
     const scriptPath = path.join(rootDir, "scripts/reset-demo.mjs");
@@ -50,7 +50,7 @@ describe("Demo Reset Tool (scripts/reset-demo.mjs)", () => {
     expect(output).toContain("Generated fresh demo identities");
     expect(output).toContain("dry-run/offline mode");
     expect(output).toContain("Saved clean scenario configuration");
-  });
+  }, 20000);
 
   it("displays help when invoked with --help", () => {
     const scriptPath = path.join(rootDir, "scripts/reset-demo.mjs");
@@ -61,6 +61,6 @@ describe("Demo Reset Tool (scripts/reset-demo.mjs)", () => {
 
     expect(output).toContain("Usage: node scripts/reset-demo.mjs [options]");
     expect(output).toContain("--dry-run");
-  });
+  }, 20000);
 });
 

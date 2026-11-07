@@ -149,5 +149,18 @@ describe("Infrastructure & Environment Audit", () => {
       expect(runbookContent).toContain("Likely Questions & Honest Answers");
       expect(runbookContent).toContain("pnpm reset-demo");
     });
+
+    it("verifies roadmap marks S1-S7 complete and details second-half waves", () => {
+      const roadmapPath = path.join(rootDir, "docs/ROADMAP.md");
+      expect(fs.existsSync(roadmapPath)).toBe(true);
+
+      const roadmapContent = fs.readFileSync(roadmapPath, "utf-8");
+      expect(roadmapContent).toContain("First Half: Demo Slice Execution (Phases S1–S7) — COMPLETE");
+      expect(roadmapContent).toContain("Phase S1: Foundation, Spec Freeze");
+      expect(roadmapContent).toContain("Phase S7: Integration, Live Demo & Runbook");
+      expect(roadmapContent).toContain("Second Half: Production & Hardening Roadmap (Waves 8–13)");
+      expect(roadmapContent).toContain("Wave 8: Smart Contract Hardening, Reclaim Flow & TTL Management");
+      expect(roadmapContent).toContain("Wave 13: External Audits, Formal Verification & Mainnet Launch");
+    });
   });
 });
