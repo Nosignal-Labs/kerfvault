@@ -1,0 +1,21 @@
+{
+  "name": "@kerfvault/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end browser integration tests for KerfVault",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo No lint for e2e"
+  },
+  "dependencies": {
+    "@kerfvault/sdk": "workspace:*",
+    "@stellar/stellar-sdk": "^13.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
+
