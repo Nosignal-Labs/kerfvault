@@ -247,6 +247,9 @@ Note #1: denomination = 20000000 stroops, state = OPEN
 - [Architecture & Design Decisions](docs/ARCHITECTURE.md)
 - [Voucher Specification (DRAFT)](docs/VOUCHER_SPEC.md)
 - [Threat Model & Security Limitations](docs/THREAT_MODEL.md)
+- [Merchant Reader PWA Deployment & Settings](docs/DEPLOY_READER.md)
+- [Shopper PWA Deployment (Vercel)](docs/DEPLOY_SHOPPER.md)
+- [Backend Infrastructure Checklist](docs/DEPLOY_BACKEND.md)
 - [Tooling & Pinned Versions](docs/TOOLING.md)
 - [Development Roadmap](docs/ROADMAP.md)
 

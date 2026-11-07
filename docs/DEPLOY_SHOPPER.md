@@ -69,3 +69,10 @@ To verify the deployment for live offline demos:
    - Tap **Sign Voucher & Show QR Code**: confirm the voucher is cryptographically signed using WebCrypto and the QR code renders cleanly.
    - Note is immediately marked `spent_offline` in local storage, preventing accidental double-presentation.
 
+---
+
+## 5. Related Deployment Guides
+
+- [Merchant Reader PWA Deployment & Settings](DEPLOY_READER.md)
+- [Backend Infrastructure Checklist (Indexer, Relay, Postgres)](DEPLOY_BACKEND.md)
+
