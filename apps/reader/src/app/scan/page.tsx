@@ -7,11 +7,13 @@ import { fetchRegistrySnapshot } from "../../lib/registryClient";
 import { saveRegistrySnapshot } from "../../lib/storage";
 import { CameraQRScanner } from "../../components/CameraQRScanner";
 import { PastePayloadInput } from "../../components/PastePayloadInput";
+import { parseAndGateVoucher, DecodedVoucherResult } from "../../lib/voucherDecoder";
+import { DecodedVoucherView } from "../../components/DecodedVoucherView";
 
 export default function ScanPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [scannedPayload, setScannedPayload] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<DecodedVoucherResult | null>(null);
   const [scanMode, setScanMode] = useState<"camera" | "paste">("camera");
 
   useEffect(() => {
@@ -38,11 +40,12 @@ export default function ScanPage() {
   };
 
   const handleScanSuccess = (payload: string) => {
-    setScannedPayload(payload.trim());
+    const result = parseAndGateVoucher(payload);
+    setScanResult(result);
   };
 
   const handleResetScan = () => {
-    setScannedPayload(null);
+    setScanResult(null);
   };
 
   return (
@@ -59,36 +62,8 @@ export default function ScanPage() {
           Capture or paste the shopper&apos;s QR voucher payload to verify authenticity offline.
         </p>
 
-        {scannedPayload ? (
-          <div className="space-y-4">
-            <div className="p-4 bg-emerald-950/30 border border-emerald-800/60 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-                  ✓ Voucher QR Captured
-                </span>
-                <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {scannedPayload.length} BYTES
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] text-zinc-400 font-mono block">RAW WIRE PAYLOAD</span>
-                <div className="p-3 bg-zinc-950 border border-zinc-800 rounded font-mono text-xs text-zinc-300 break-all select-all">
-                  {scannedPayload}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleResetScan}
-                className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition"
-              >
-                Scan / Enter Another Voucher
-              </button>
-            </div>
-          </div>
+        {scanResult ? (
+          <DecodedVoucherView result={scanResult} onReset={handleResetScan} />
         ) : (
           <div className="space-y-6">
             <div className="flex border-b border-zinc-800">
