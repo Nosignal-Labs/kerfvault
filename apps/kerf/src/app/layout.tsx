@@ -39,6 +39,9 @@ export default function RootLayout({
               <Link href="/how-it-works" className="hover:text-zinc-200">
                 How it works
               </Link>
+              <Link href="/limitations" className="hover:text-zinc-200">
+                Limitations
+              </Link>
               <Link href="/settings" className="hover:text-zinc-200">
                 Settings
               </Link>
