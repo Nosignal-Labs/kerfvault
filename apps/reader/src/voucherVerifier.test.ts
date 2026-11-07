@@ -7,6 +7,8 @@ import { parseAndGateVoucher } from "./lib/voucherDecoder";
 import {
   verifyVoucherSignatureAgainstRegistry,
   confirmMerchantPayee,
+  checkVoucherExpiry,
+  checkNoteOpenStatus,
 } from "./lib/voucherVerifier";
 import { DecodedVoucherView } from "./components/DecodedVoucherView";
 
@@ -225,6 +227,162 @@ describe("Voucher Signature Verification Against Registry Voucher Key", () => {
       expect(res.valid).toBe(false);
       expect(res.reason).toBe("MerchantMismatch");
       expect(res.error).toContain("Merchant payee mismatch");
+    });
+  });
+
+  describe("checkVoucherExpiry", () => {
+    it("returns expired: false when current time is before acceptUntil", () => {
+      const res = checkVoucherExpiry(1800000000n, 1700000000n);
+      expect(res.expired).toBe(false);
+      expect(res.error).toBeUndefined();
+    });
+
+    it("returns expired: true when current time is after acceptUntil", () => {
+      const res = checkVoucherExpiry(1700000000n, 1800000000n);
+      expect(res.expired).toBe(true);
+      expect(res.error).toContain("expired");
+    });
+  });
+
+  describe("checkNoteOpenStatus", () => {
+    const sampleNotes = [
+      { index: 0, denomination: "10000000", status: "Open" as const },
+      { index: 1, denomination: "20000000", status: "Redeemed" as const },
+    ];
+
+    it("returns open: false when notes list is missing", () => {
+      const res = checkNoteOpenStatus(undefined, 0);
+      expect(res.open).toBe(false);
+      expect(res.error).toContain("No notes registered");
+    });
+
+    it("returns open: false when note index is not found in book", () => {
+      const res = checkNoteOpenStatus(sampleNotes, 99);
+      expect(res.open).toBe(false);
+      expect(res.error).toContain("does not exist");
+    });
+
+    it("returns open: false and status 'Redeemed' when note is already redeemed", () => {
+      const res = checkNoteOpenStatus(sampleNotes, 1);
+      expect(res.open).toBe(false);
+      expect(res.status).toBe("Redeemed");
+      expect(res.error).toContain("no longer open");
+      expect(res.error).toContain("redeemed");
+    });
+
+    it("returns open: true when note is Open", () => {
+      const res = checkNoteOpenStatus(sampleNotes, 0);
+      expect(res.open).toBe(true);
+      expect(res.status).toBe("Open");
+    });
+  });
+
+  describe("Reject expired vouchers and notes that are no longer open", () => {
+    it("rejects an expired voucher with VoucherExpired reason", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 0,
+        merchant: merchantAddress,
+        amount: 10_000_000n,
+        cap: 20_000_000n,
+        acceptUntil: 1600000000n, // Expired timestamp
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, mockSnapshot, {
+        currentTimestamp: 1700000000n,
+      });
+      expect(res.valid).toBe(false);
+      expect(res.reason).toBe("VoucherExpired");
+      expect(res.error).toContain("expired");
+    });
+
+    it("rejects a voucher for a book whose redeemDeadline has passed", async () => {
+      const expiredBookSnapshot: RegistrySnapshot = {
+        ...mockSnapshot,
+        books: {
+          "100": {
+            ...mockSnapshot.books["100"],
+            redeemDeadline: "1500000000", // Expired book deadline
+          },
+        },
+      };
+
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 0,
+        merchant: merchantAddress,
+        amount: 10_000_000n,
+        cap: 20_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, expiredBookSnapshot, {
+        currentTimestamp: 1600000000n,
+      });
+      expect(res.valid).toBe(false);
+      expect(res.reason).toBe("BookExpired");
+      expect(res.error).toContain("expired");
+    });
+
+    it("rejects a voucher referencing a note that has already been Redeemed", async () => {
+      const redeemedNoteSnapshot: RegistrySnapshot = {
+        ...mockSnapshot,
+        books: {
+          "100": {
+            ...mockSnapshot.books["100"],
+            notes: [
+              { index: 0, denomination: "10000000", status: "Open" },
+              { index: 1, denomination: "20000000", status: "Redeemed" },
+            ],
+          },
+        },
+      };
+
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 1, // Note 1 is Redeemed!
+        merchant: merchantAddress,
+        amount: 20_000_000n,
+        cap: 50_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, redeemedNoteSnapshot, {
+        merchantAddress,
+      });
+      expect(res.valid).toBe(false);
+      expect(res.reason).toBe("NoteNotOpen");
+      expect(res.noteStatus).toBe("Redeemed");
+      expect(res.noteIsOpen).toBe(false);
+      expect(res.error).toContain("already been redeemed");
+    });
+
+    it("accepts a voucher referencing an Open note within expiry", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 0, // Note 0 is Open!
+        merchant: merchantAddress,
+        amount: 10_000_000n,
+        cap: 20_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, mockSnapshot, {
+        merchantAddress,
+        currentTimestamp: 1700000000n,
+      });
+      expect(res.valid).toBe(true);
+      expect(res.noteStatus).toBe("Open");
+      expect(res.noteIsOpen).toBe(true);
+      expect(res.payeeMatched).toBe(true);
     });
   });
 
