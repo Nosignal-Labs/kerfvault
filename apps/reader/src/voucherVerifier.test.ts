@@ -9,6 +9,7 @@ import {
   confirmMerchantPayee,
   checkVoucherExpiry,
   checkNoteOpenStatus,
+  checkMerchantCapLimit,
 } from "./lib/voucherVerifier";
 import { DecodedVoucherView } from "./components/DecodedVoucherView";
 
@@ -386,6 +387,81 @@ describe("Voucher Signature Verification Against Registry Voucher Key", () => {
     });
   });
 
+  describe("checkMerchantCapLimit", () => {
+    it("returns withinCap: true when amount <= cap and cap <= maxCapLimit", () => {
+      const res = checkMerchantCapLimit(10_000_000n, 20_000_000n, 50_000_000n);
+      expect(res.withinCap).toBe(true);
+      expect(res.error).toBeUndefined();
+    });
+
+    it("returns withinCap: false when voucher amount exceeds its own cap", () => {
+      const res = checkMerchantCapLimit(60_000_000n, 50_000_000n, 100_000_000n);
+      expect(res.withinCap).toBe(false);
+      expect(res.error).toContain("cannot exceed its cap");
+    });
+
+    it("returns withinCap: false when voucher amount is zero or negative", () => {
+      const res = checkMerchantCapLimit(0n, 50_000_000n, 100_000_000n);
+      expect(res.withinCap).toBe(false);
+      expect(res.error).toContain("greater than zero");
+    });
+
+    it("returns withinCap: false when voucher cap exceeds merchant limit", () => {
+      const res = checkMerchantCapLimit(20_000_000n, 100_000_000n, 50_000_000n);
+      expect(res.withinCap).toBe(false);
+      expect(res.error).toContain("exceeds merchant terminal limit");
+    });
+  });
+
+  describe("Hold every voucher to the merchant's own cap", () => {
+    it("rejects voucher when its cap exceeds the merchant terminal's configured cap limit", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 0,
+        merchant: merchantAddress,
+        amount: 20_000_000n, // 2 XLM
+        cap: 100_000_000n, // 10 XLM cap
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      // Merchant configured limit of 5 XLM (50_000_000 stroops)
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, mockSnapshot, {
+        merchantAddress,
+        maxCapLimit: 50_000_000n,
+      });
+
+      expect(res.valid).toBe(false);
+      expect(res.reason).toBe("CapExceedsMerchantLimit");
+      expect(res.withinMerchantCap).toBe(false);
+      expect(res.error).toContain("exceeds merchant terminal");
+    });
+
+    it("accepts voucher when its cap and amount are within merchant limit", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 0,
+        merchant: merchantAddress,
+        amount: 20_000_000n, // 2 XLM
+        cap: 40_000_000n, // 4 XLM cap
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      // Merchant configured limit of 5 XLM (50_000_000 stroops)
+      const res = await verifyVoucherSignatureAgainstRegistry(voucher, mockSnapshot, {
+        merchantAddress,
+        maxCapLimit: 50_000_000n,
+      });
+
+      expect(res.valid).toBe(true);
+      expect(res.withinMerchantCap).toBe(true);
+      expect(res.maxCapLimitXlm).toBe(5);
+    });
+  });
+
   describe("DecodedVoucherView with Signature Verification Display", () => {
     it("renders green verified banner when signature matches registry", async () => {
       const voucher = await signVoucher({
@@ -458,6 +534,42 @@ describe("Voucher Signature Verification Against Registry Voucher Key", () => {
       );
 
       expect(html).toContain("Payee Confirmed");
+    });
+
+    it("renders Within Cap badge when withinMerchantCap: true", async () => {
+      const voucher = await signVoucher({
+        contractId,
+        bookId: 100n,
+        noteIndex: 1,
+        merchant: merchantAddress,
+        amount: 20_000_000n,
+        cap: 50_000_000n,
+        acceptUntil: 1800000000n,
+        voucherSecretKey: voucherSecretBytes,
+      });
+
+      const decodeRes = {
+        valid: true,
+        voucher,
+        rawPayload: "dummy_wire_payload",
+      };
+
+      const sigRes = {
+        valid: true,
+        voucherKey: voucherPublicKey,
+        bookId: "100",
+        withinMerchantCap: true,
+      };
+
+      const html = renderToString(
+        React.createElement(DecodedVoucherView, {
+          result: decodeRes,
+          sigVerification: sigRes,
+          onReset: vi.fn(),
+        })
+      );
+
+      expect(html).toContain("Within Cap");
     });
 
     it("renders red failure banner when signature verification fails", async () => {
