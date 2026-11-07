@@ -33,6 +33,8 @@ coverage/
 *.keys.json
 .demo-keys.json
 .demo-state.json
+.demo-scenario.json
+.demo-queue.json
 
 # IDE & OS
 .vscode/
