@@ -136,5 +136,18 @@ describe("Infrastructure & Environment Audit", () => {
       expect(readmeContent).toContain("CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE");
       expect(readmeContent).toContain("Demo Slice Scope: Built vs Deferred Matrix");
     });
+
+    it("verifies live demo runbook exists with checklist, script, fallback plan, and FAQs", () => {
+      const runbookPath = path.join(rootDir, "docs/DEMO_RUNBOOK.md");
+      expect(fs.existsSync(runbookPath)).toBe(true);
+
+      const runbookContent = fs.readFileSync(runbookPath, "utf-8");
+      expect(runbookContent).toContain("# Kerfvault Live Demonstration Runbook");
+      expect(runbookContent).toContain("Pre-Flight Checklist");
+      expect(runbookContent).toContain("5-Minute Live Demo Script");
+      expect(runbookContent).toContain("Fallback & Incident Response Procedures");
+      expect(runbookContent).toContain("Likely Questions & Honest Answers");
+      expect(runbookContent).toContain("pnpm reset-demo");
+    });
   });
 });
