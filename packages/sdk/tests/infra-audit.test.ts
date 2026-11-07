@@ -104,5 +104,24 @@ describe("Infrastructure & Environment Audit", () => {
         expect(headersMap.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
       }
     });
+
+    it("ensures reader application explicitly permits camera access via permissions header", () => {
+      const readerVercelPath = path.join(rootDir, "apps/reader/vercel.json");
+      const parsed = JSON.parse(fs.readFileSync(readerVercelPath, "utf-8"));
+      const wildcardRule = parsed.headers.find(
+        (h: { source: string }) => h.source === "/(.*)"
+      );
+      expect(wildcardRule).toBeDefined();
+
+      const headersMap = new Map<string, string>(
+        wildcardRule.headers.map((h: { key: string; value: string }) => [h.key, h.value])
+      );
+      expect(headersMap.get("Permissions-Policy")).toBe("camera=(self)");
+
+      const nextConfigPath = path.join(rootDir, "apps/reader/next.config.ts");
+      const nextConfigContent = fs.readFileSync(nextConfigPath, "utf-8");
+      expect(nextConfigContent).toContain('key: "Permissions-Policy"');
+      expect(nextConfigContent).toContain('value: "camera=(self)"');
+    });
   });
 });
