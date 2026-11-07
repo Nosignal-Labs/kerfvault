@@ -9,6 +9,7 @@ export interface DecodedVoucherViewProps {
   sigVerification?: VoucherSignatureVerificationResult | null;
   onReset: () => void;
   onAccept?: () => Promise<void> | void;
+  onDecline?: () => void;
   isAccepted?: boolean;
   isAccepting?: boolean;
 }
@@ -18,6 +19,7 @@ export function DecodedVoucherView({
   sigVerification,
   onReset,
   onAccept,
+  onDecline,
   isAccepted = false,
   isAccepting = false,
 }: DecodedVoucherViewProps) {
@@ -243,31 +245,42 @@ export function DecodedVoucherView({
 
       <div className="flex gap-3">
         {sigVerification?.valid && !isAccepted && onAccept && (
-          <button
-            type="button"
-            onClick={onAccept}
-            disabled={isAccepting}
-            className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
-          >
-            {isAccepting ? (
-              <>
-                <span className="animate-spin">◌</span>
-                <span>Accepting...</span>
-              </>
-            ) : (
-              <>
-                <span>✓</span>
-                <span>Accept & Queue Voucher</span>
-              </>
+          <>
+            <button
+              type="button"
+              onClick={onAccept}
+              disabled={isAccepting}
+              className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
+            >
+              {isAccepting ? (
+                <>
+                  <span className="animate-spin">◌</span>
+                  <span>Accepting...</span>
+                </>
+              ) : (
+                <>
+                  <span>✓</span>
+                  <span>Accept & Queue Voucher</span>
+                </>
+              )}
+            </button>
+            {onDecline && (
+              <button
+                type="button"
+                onClick={onDecline}
+                className="py-2.5 px-3 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 rounded-lg text-xs font-medium transition"
+              >
+                Decline
+              </button>
             )}
-          </button>
+          </>
         )}
 
         <button
           type="button"
           onClick={onReset}
           className={`${
-            sigVerification?.valid && !isAccepted && onAccept ? "w-1/3" : "w-full"
+            sigVerification?.valid && !isAccepted && onAccept ? "w-1/4" : "w-full"
           } py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition`}
         >
           {isAccepted ? "Scan Next Voucher" : "Scan / Enter Another Voucher"}
