@@ -3,10 +3,14 @@ import {
   fetchRegistrySnapshot,
   validateRegistrySnapshot,
   RegistryClientError,
+  DEFAULT_INDEXER_URL,
 } from "./lib/registryClient";
 import type { RegistrySnapshot } from "@kerfvault/sdk";
 
 describe("Registry Client (Snapshot Fetcher)", () => {
+  it("defaults to port 4001 when NEXT_PUBLIC_INDEXER_URL is unset", () => {
+    expect(DEFAULT_INDEXER_URL).toBe("http://localhost:4001");
+  });
   const sampleSnapshot: RegistrySnapshot = {
     version: 1,
     contractId: "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE",

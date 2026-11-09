@@ -1,7 +1,7 @@
 import type { RegistrySnapshot } from "@kerfvault/sdk";
 
 export const DEFAULT_INDEXER_URL =
-  process.env.NEXT_PUBLIC_INDEXER_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_INDEXER_URL || "http://localhost:4001";
 
 export class RegistryClientError extends Error {
   constructor(message: string, public readonly status?: number) {
