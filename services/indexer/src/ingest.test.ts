@@ -137,6 +137,44 @@ describe("Event Ingestion & RPC Polling", () => {
     );
   });
 
+  it("normalizes contractId objects and falls back to item.id for cursor", async () => {
+    const { client, tables } = createMockDb();
+
+    const mockResponse: SorobanEventsResponse = {
+      events: [
+        {
+          id: "0024238239913144320-0000000001",
+          ledger: 5643405,
+          contractId: {
+            contractId: () => "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE",
+            toString: () => "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE",
+          } as any,
+          topic: ["opened", 5],
+          value: { owner: "GA...", total: "500000000" },
+          txHash: "tx_hash_64_chars",
+        },
+      ],
+      latestLedger: 5643405,
+    };
+
+    const mockRpcClient: RpcEventsClient = {
+      getEvents: vi.fn(async () => mockResponse),
+    };
+
+    const result = await pollEventsOnce(client, mockRpcClient, {
+      rpcUrl: "https://soroban-testnet.stellar.org",
+      contractId: "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE",
+      startLedger: 5643404,
+    });
+
+    expect(result.eventsProcessed).toBe(1);
+    expect(result.cursor).toBe("0024238239913144320-0000000001");
+    expect(tables.contract_events[0].contractId).toBe(
+      "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE"
+    );
+    expect(tables.contract_events[0].cursor).toBe("0024238239913144320-0000000001");
+  });
+
   it("polls Soroban RPC getEvents from saved cursor and updates state", async () => {
     const { client, tables } = createMockDb();
     tables.sync_state.set(DEFAULT_SYNC_KEY, {
