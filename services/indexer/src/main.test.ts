@@ -45,14 +45,22 @@ function createMockHttp(
 }
 
 describe("Indexer Main Startup Sequence", () => {
+  const originalEnvStartLedger = process.env.START_LEDGER;
+
   beforeEach(() => {
     setDbClient(null);
     setRpcClient(null);
+    delete process.env.START_LEDGER;
   });
 
   afterEach(() => {
     setDbClient(null);
     setRpcClient(null);
+    if (originalEnvStartLedger !== undefined) {
+      process.env.START_LEDGER = originalEnvStartLedger;
+    } else {
+      delete process.env.START_LEDGER;
+    }
   });
 
   it("runs startup sequence with configured pool, runs migrations, starts ingest, and serves live registry", async () => {
@@ -209,5 +217,166 @@ describe("Indexer Main Startup Sequence", () => {
       await instance.stop();
     }
   });
-});
 
+  it("case 1: passes configured START_LEDGER to ingest config when there is no saved sync state", async () => {
+    const logSpy = vi.spyOn(console, "log");
+
+    const mockClient = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+
+    const mockPool = {
+      connect: vi.fn(async () => mockClient),
+      query: vi.fn(async <R = any>(text: string) => {
+        // No saved sync state
+        if (text.includes("SELECT key, last_ledger, cursor, updated_at FROM sync_state")) {
+          return { rows: [] as R[] };
+        }
+        if (text.includes("SELECT last_ledger, cursor FROM sync_state")) {
+          return { rows: [] as R[] };
+        }
+        return { rows: [] as R[] };
+      }),
+      end: vi.fn(async () => {}),
+    } as unknown as pg.Pool;
+
+    const mockRpcClient = {
+      getEvents: vi.fn(async () => ({ events: [], latestLedger: 6000 })),
+      getLatestLedger: vi.fn(async () => ({ sequence: 6000 })),
+    };
+
+    process.env.START_LEDGER = "5000";
+
+    const instance = await start({
+      pool: mockPool,
+      rpcClient: mockRpcClient as any,
+      skipListen: true,
+      pollIntervalMs: 5000,
+    });
+
+    try {
+      expect(instance.startingLedger).toBe(5000);
+
+      // Wait a tick for initial pollEventsOnce
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockRpcClient.getEvents).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startLedger: 5000,
+        })
+      );
+
+      const loggedStartingLedger = logSpy.mock.calls.some((args) =>
+        args.join(" ").includes("START_LEDGER: 5000")
+      );
+      expect(loggedStartingLedger).toBe(true);
+    } finally {
+      await instance.stop();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("case 2: starts from RPC latest ledger when there is no saved sync state and no START_LEDGER", async () => {
+    const logSpy = vi.spyOn(console, "log");
+
+    const mockClient = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+
+    const mockPool = {
+      connect: vi.fn(async () => mockClient),
+      query: vi.fn(async <R = any>(text: string) => {
+        // No saved sync state
+        if (text.includes("SELECT key, last_ledger, cursor, updated_at FROM sync_state")) {
+          return { rows: [] as R[] };
+        }
+        if (text.includes("SELECT last_ledger, cursor FROM sync_state")) {
+          return { rows: [] as R[] };
+        }
+        return { rows: [] as R[] };
+      }),
+      end: vi.fn(async () => {}),
+    } as unknown as pg.Pool;
+
+    const mockRpcClient = {
+      getEvents: vi.fn(async () => ({ events: [], latestLedger: 998877 })),
+      getLatestLedger: vi.fn(async () => ({ sequence: 998877 })),
+    };
+
+    delete process.env.START_LEDGER;
+
+    const instance = await start({
+      pool: mockPool,
+      rpcClient: mockRpcClient as any,
+      skipListen: true,
+      pollIntervalMs: 5000,
+    });
+
+    try {
+      expect(mockRpcClient.getLatestLedger).toHaveBeenCalled();
+      expect(instance.startingLedger).toBe(998877);
+
+      // Wait a tick for initial pollEventsOnce
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockRpcClient.getEvents).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startLedger: 998877,
+        })
+      );
+
+      const loggedRpcLedger = logSpy.mock.calls.some((args) =>
+        args.join(" ").includes("RPC latest ledger: 998877")
+      );
+      expect(loggedRpcLedger).toBe(true);
+    } finally {
+      await instance.stop();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("logs ingest errors at startup when RPC fails to provide latest ledger", async () => {
+    const errorSpy = vi.spyOn(console, "error");
+
+    const mockClient = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+
+    const mockPool = {
+      connect: vi.fn(async () => mockClient),
+      query: vi.fn(async <R = any>() => ({ rows: [] as R[] })),
+      end: vi.fn(async () => {}),
+    } as unknown as pg.Pool;
+
+    const mockRpcClient = {
+      getEvents: vi.fn(async () => ({ events: [], latestLedger: 0 })),
+      getLatestLedger: vi.fn(async () => {
+        throw new Error("RPC Network Timeout");
+      }),
+    };
+
+    delete process.env.START_LEDGER;
+
+    const instance = await start({
+      pool: mockPool,
+      rpcClient: mockRpcClient as any,
+      skipListen: true,
+      pollIntervalMs: 5000,
+    });
+
+    try {
+      expect(mockRpcClient.getLatestLedger).toHaveBeenCalled();
+
+      const loggedError = errorSpy.mock.calls.some((args) =>
+        args.join(" ").includes("failed to fetch latest ledger from RPC")
+      );
+      expect(loggedError).toBe(true);
+    } finally {
+      await instance.stop();
+      errorSpy.mockRestore();
+    }
+  });
+});

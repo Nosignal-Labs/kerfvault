@@ -5,6 +5,8 @@ import { server, setDbClient, setRpcClient } from "./index.js";
 import { runMigrations } from "./db/migrate.js";
 import {
   startEventIngestion,
+  getSyncState,
+  DEFAULT_SYNC_KEY,
   type IngestConfig,
   type RpcEventsClient,
 } from "./ingest.js";
@@ -16,6 +18,7 @@ export interface IndexerStartupOptions {
   contractId?: string;
   port?: number;
   pollIntervalMs?: number;
+  startLedger?: number;
   pool?: pg.Pool;
   rpcClient?: rpc.Server;
   skipListen?: boolean;
@@ -26,6 +29,7 @@ export interface IndexerInstance {
   rpcClient: rpc.Server;
   server: typeof server;
   abortController: AbortController;
+  startingLedger?: number;
   stop: () => Promise<void>;
 }
 
@@ -40,6 +44,15 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
   const pollIntervalMs =
     options.pollIntervalMs ??
     (process.env.POLL_INTERVAL_MS ? parseInt(process.env.POLL_INTERVAL_MS, 10) : 5000);
+
+  const envStartLedger = process.env.START_LEDGER
+    ? parseInt(process.env.START_LEDGER, 10)
+    : undefined;
+  const configuredStartLedger =
+    options.startLedger ??
+    (envStartLedger !== undefined && !Number.isNaN(envStartLedger)
+      ? envStartLedger
+      : undefined);
 
   let pool: pg.Pool | null = options.pool ?? null;
 
@@ -89,23 +102,66 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
   setRpcClient(rpcClient as unknown as LatestLedgerProvider);
 
   const abortController = new AbortController();
+  let startingLedger: number | undefined = configuredStartLedger;
 
   if (pool) {
+    try {
+      const savedState = await getSyncState(pool, DEFAULT_SYNC_KEY);
+      if (savedState && (savedState.lastLedger || savedState.cursor)) {
+        console.log(
+          `[indexer] Resuming ingestion from saved sync state (lastLedger: ${savedState.lastLedger}, cursor: ${savedState.cursor ?? "none"}).`
+        );
+      } else {
+        // No saved sync state
+        if (startingLedger !== undefined) {
+          console.log(
+            `[indexer] No saved sync state found. Starting ingestion from configured START_LEDGER: ${startingLedger}`
+          );
+        } else {
+          try {
+            const latestRpc = await rpcClient.getLatestLedger();
+            startingLedger = latestRpc.sequence;
+            console.log(
+              `[indexer] No saved sync state and no START_LEDGER configured. Starting ingestion from RPC latest ledger: ${startingLedger}`
+            );
+          } catch (err) {
+            console.error(
+              "[indexer] Ingest startup error: failed to fetch latest ledger from RPC:",
+              err
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[indexer] Ingest startup error: failed to read sync state from database:", err);
+    }
+
     const ingestConfig: IngestConfig = {
       rpcUrl,
       contractId,
+      startLedger: startingLedger,
       pollIntervalMs,
     };
+
     void startEventIngestion(
       pool,
       ingestConfig,
       rpcClient as unknown as RpcEventsClient,
       { signal: abortController.signal }
+    ).catch((err) => {
+      console.error("[indexer] Ingest startup error in event ingestion loop:", err);
+    });
+
+    console.log(
+      `[indexer] Ingest loop started for contract ${contractId} (starting ledger: ${startingLedger ?? "automatic"}, poll interval: ${pollIntervalMs}ms).`
     );
-    console.log(`[indexer] Ingest loop started for contract ${contractId} (poll interval: ${pollIntervalMs}ms).`);
   }
 
   if (!options.skipListen) {
+    server.on("error", (err) => {
+      console.error("[indexer] HTTP server error:", err);
+    });
+
     server.listen(port, () => {
       console.log(`[indexer] Registry service listening on port ${port}`);
     });
@@ -125,7 +181,7 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
     setRpcClient(null);
   };
 
-  return { pool, rpcClient, server, abortController, stop };
+  return { pool, rpcClient, server, abortController, startingLedger, stop };
 }
 
 const isMainModule =
@@ -138,6 +194,21 @@ const isMainModule =
   );
 
 if (isMainModule) {
+  if (typeof process.loadEnvFile === "function") {
+    try {
+      process.loadEnvFile();
+    } catch {
+      // .env file is optional
+    }
+  }
+
+  process.on("uncaughtException", (err) => {
+    console.error("[indexer] Uncaught exception:", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[indexer] Unhandled promise rejection:", reason);
+  });
+
   start()
     .then((instance) => {
       const handleSignal = () => {
@@ -158,4 +229,3 @@ if (isMainModule) {
       process.exit(1);
     });
 }
-
