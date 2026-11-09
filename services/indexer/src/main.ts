@@ -1,6 +1,7 @@
 import pg from "pg";
 const { Pool } = pg;
 import { rpc } from "@stellar/stellar-sdk";
+import { KerfvaultClient } from "@kerfvault/sdk";
 import { server, setDbClient, setRpcClient } from "./index.js";
 import { runMigrations } from "./db/migrate.js";
 import {
@@ -9,6 +10,7 @@ import {
   DEFAULT_SYNC_KEY,
   type IngestConfig,
   type RpcEventsClient,
+  type ContractReader,
 } from "./ingest.js";
 import type { LatestLedgerProvider } from "./health.js";
 
@@ -16,17 +18,20 @@ export interface IndexerStartupOptions {
   databaseUrl?: string;
   rpcUrl?: string;
   contractId?: string;
+  networkPassphrase?: string;
   port?: number;
   pollIntervalMs?: number;
   startLedger?: number;
   pool?: pg.Pool;
   rpcClient?: rpc.Server;
+  contractReader?: ContractReader;
   skipListen?: boolean;
 }
 
 export interface IndexerInstance {
   pool: pg.Pool | null;
   rpcClient: rpc.Server;
+  contractReader?: ContractReader;
   server: typeof server;
   abortController: AbortController;
   startingLedger?: number;
@@ -40,6 +45,10 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
     options.contractId ??
     process.env.KERFVAULT_CONTRACT_ID ??
     "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE";
+  const networkPassphrase =
+    options.networkPassphrase ??
+    process.env.NETWORK_PASSPHRASE ??
+    "Test SDF Network ; September 2015";
   const port = options.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 4001);
   const pollIntervalMs =
     options.pollIntervalMs ??
@@ -103,6 +112,7 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
 
   const abortController = new AbortController();
   let startingLedger: number | undefined = configuredStartLedger;
+  let contractReader: ContractReader | undefined = options.contractReader;
 
   if (pool) {
     try {
@@ -136,6 +146,17 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
       console.error("[indexer] Ingest startup error: failed to read sync state from database:", err);
     }
 
+    if (!contractReader) {
+      contractReader = new KerfvaultClient(
+        {
+          rpcUrl,
+          contractId,
+          networkPassphrase,
+        },
+        rpcClient
+      );
+    }
+
     const ingestConfig: IngestConfig = {
       rpcUrl,
       contractId,
@@ -147,7 +168,7 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
       pool,
       ingestConfig,
       rpcClient as unknown as RpcEventsClient,
-      { signal: abortController.signal }
+      { signal: abortController.signal, contractReader }
     ).catch((err) => {
       console.error("[indexer] Ingest startup error in event ingestion loop:", err);
     });
@@ -181,7 +202,7 @@ export async function start(options: IndexerStartupOptions = {}): Promise<Indexe
     setRpcClient(null);
   };
 
-  return { pool, rpcClient, server, abortController, startingLedger, stop };
+  return { pool, rpcClient, contractReader, server, abortController, startingLedger, stop };
 }
 
 const isMainModule =

@@ -379,4 +379,85 @@ describe("Indexer Main Startup Sequence", () => {
       errorSpy.mockRestore();
     }
   });
+
+  it("instantiates KerfvaultClient contractReader by default when database is enabled", async () => {
+    const mockClient = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+
+    const mockPool = {
+      connect: vi.fn(async () => mockClient),
+      query: vi.fn(async <R = any>() => ({ rows: [] as R[] })),
+      end: vi.fn(async () => {}),
+    } as unknown as pg.Pool;
+
+    const mockRpcClient = {
+      getEvents: vi.fn(async () => ({ events: [], latestLedger: 50000 })),
+      getLatestLedger: vi.fn(async () => ({ sequence: 50000 })),
+    };
+
+    const instance = await start({
+      pool: mockPool,
+      rpcClient: mockRpcClient as any,
+      skipListen: true,
+      pollIntervalMs: 10000,
+    });
+
+    try {
+      expect(instance.contractReader).toBeDefined();
+      expect(typeof instance.contractReader?.getBook).toBe("function");
+      expect(typeof instance.contractReader?.getNote).toBe("function");
+    } finally {
+      await instance.stop();
+    }
+  });
+
+  it("accepts custom contractReader option", async () => {
+    const mockClient = {
+      query: vi.fn(async () => ({ rows: [] })),
+      release: vi.fn(),
+    };
+
+    const mockPool = {
+      connect: vi.fn(async () => mockClient),
+      query: vi.fn(async <R = any>() => ({ rows: [] as R[] })),
+      end: vi.fn(async () => {}),
+    } as unknown as pg.Pool;
+
+    const mockRpcClient = {
+      getEvents: vi.fn(async () => ({ events: [], latestLedger: 50000 })),
+      getLatestLedger: vi.fn(async () => ({ sequence: 50000 })),
+    };
+
+    const customReader = {
+      getBook: vi.fn(async () => ({
+        bookId: 1n,
+        owner: "GA...",
+        token: "CD...",
+        voucherKey: "00".repeat(32),
+        redeemDeadline: 0n,
+        freeBalance: 0n,
+        noteCount: 0,
+      })),
+      getNote: vi.fn(async () => ({
+        denomination: 100n,
+        state: 0,
+      })),
+    };
+
+    const instance = await start({
+      pool: mockPool,
+      rpcClient: mockRpcClient as any,
+      contractReader: customReader,
+      skipListen: true,
+      pollIntervalMs: 10000,
+    });
+
+    try {
+      expect(instance.contractReader).toBe(customReader);
+    } finally {
+      await instance.stop();
+    }
+  });
 });
