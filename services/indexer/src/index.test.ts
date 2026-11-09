@@ -105,6 +105,62 @@ describe("Indexer HTTP Service & Health Endpoint", () => {
     expect(snapshot.books).toEqual({});
   });
 
+  it("fails if /registry returns the placeholder when a database is configured", async () => {
+    const configuredDb: Queryable = {
+      query: vi.fn(async <R = any>(text: string) => {
+        if (text.includes("SELECT last_ledger FROM sync_state")) {
+          return { rows: [{ last_ledger: "54321" }] as unknown as R[] };
+        }
+        if (text.includes("SELECT book_id, contract_id, owner, token")) {
+          return {
+            rows: [
+              {
+                book_id: "101",
+                contract_id: "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE",
+                owner: "GA111111111111111111111111111111111111111111111111111111",
+                token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+                voucher_key: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+                redeem_deadline: "1793400000",
+                free_balance: "3000000",
+              },
+            ] as unknown as R[],
+          };
+        }
+        if (text.includes("SELECT book_id, note_index, denomination, state")) {
+          return {
+            rows: [
+              { book_id: "101", note_index: 0, denomination: "10000000", state: "Open" },
+            ] as unknown as R[],
+          };
+        }
+        return { rows: [] as R[] };
+      }),
+    };
+
+    setDbClient(configuredDb);
+    try {
+      const { req, res, getResponse } = createMockHttp("/registry");
+      // Call handleRequest without explicit dbClient, relying on configured dbClient
+      await handleRequest(req, res);
+
+      const { statusCode, body } = getResponse();
+      expect(statusCode).toBe(200);
+
+      const snapshot = JSON.parse(body);
+
+      // If the placeholder is returned, ledgerSequence is 0 and books is empty {}.
+      // This test fails if /registry returns that fallback placeholder.
+      expect(snapshot.ledgerSequence).not.toBe(0);
+      expect(snapshot.ledgerSequence).toBe(54321);
+      expect(snapshot.books).not.toEqual({});
+      expect(snapshot.books["101"]).toBeDefined();
+      expect(snapshot.books["101"].notes).toHaveLength(1);
+      expect(configuredDb.query).toHaveBeenCalled();
+    } finally {
+      setDbClient(null);
+    }
+  });
+
   it("builds and serves live registry snapshot from database", async () => {
     const mockDb: Queryable = {
       query: vi.fn(async <R = any>(text: string) => {
