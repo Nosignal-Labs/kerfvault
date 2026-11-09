@@ -108,6 +108,35 @@ describe("Event Ingestion & RPC Polling", () => {
     expect(tables.contract_events[0].txHash).toBe("tx_hash_1");
   });
 
+  it("safely serializes events with BigInt values without throwing", async () => {
+    const { client, tables } = createMockDb();
+
+    await recordContractEvent(client, {
+      contractId: "CBGA55JOTTZKW44Z6Y67RMJNT3ZKN42CGVXBA35KQRGL6R3AIZOKXGFE",
+      topic: "opened",
+      ledger: 5643405,
+      txHash: "tx_hash_bigint",
+      cursor: "token_bigint",
+      data: [
+        "GD4EI6YCIWNAG4Q5AWFL33R6KGTXQOVSWNLBDG75BSGZWRZYOMRHC3QA",
+        "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        500000000n,
+        5,
+      ],
+    });
+
+    expect(tables.contract_events.length).toBe(1);
+    expect(tables.contract_events[0].topic).toBe("opened");
+    expect(tables.contract_events[0].data).toBe(
+      JSON.stringify([
+        "GD4EI6YCIWNAG4Q5AWFL33R6KGTXQOVSWNLBDG75BSGZWRZYOMRHC3QA",
+        "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        "500000000",
+        5,
+      ])
+    );
+  });
+
   it("polls Soroban RPC getEvents from saved cursor and updates state", async () => {
     const { client, tables } = createMockDb();
     tables.sync_state.set(DEFAULT_SYNC_KEY, {

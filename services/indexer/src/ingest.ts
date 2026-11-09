@@ -123,6 +123,13 @@ export async function recordContractEvent(
   client: Queryable,
   event: ContractEventRecord
 ): Promise<void> {
+  const serializedData =
+    event.data !== undefined && event.data !== null
+      ? JSON.stringify(event.data, (_, v) =>
+          typeof v === "bigint" ? v.toString() : v
+        )
+      : null;
+
   await client.query(
     `
     INSERT INTO contract_events (contract_id, topic, ledger, tx_hash, cursor, data, created_at)
@@ -134,7 +141,7 @@ export async function recordContractEvent(
       event.ledger,
       event.txHash ?? null,
       event.cursor ?? null,
-      event.data ? JSON.stringify(event.data) : null,
+      serializedData,
     ]
   );
 }
