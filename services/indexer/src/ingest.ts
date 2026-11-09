@@ -32,10 +32,10 @@ export interface ContractEventRecord {
 
 export interface SorobanEventItem {
   id: string;
-  pagingToken: string;
+  pagingToken?: string;
   ledger: number;
   ledgerClosedAt?: string;
-  contractId: string;
+  contractId: any;
   topic: any[];
   value: any;
   inSuccessfulContractCall?: boolean;
@@ -123,6 +123,13 @@ export async function recordContractEvent(
   client: Queryable,
   event: ContractEventRecord
 ): Promise<void> {
+  const contractIdStr =
+    typeof event.contractId === "string"
+      ? event.contractId
+      : typeof (event.contractId as any)?.contractId === "function"
+      ? (event.contractId as any).contractId()
+      : String(event.contractId);
+
   const serializedData =
     event.data !== undefined && event.data !== null
       ? JSON.stringify(event.data, (_, v) =>
@@ -136,7 +143,7 @@ export async function recordContractEvent(
     VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP);
     `,
     [
-      event.contractId,
+      contractIdStr,
       event.topic,
       event.ledger,
       event.txHash ?? null,
@@ -340,22 +347,33 @@ export async function pollEventsOnce(
   for (const item of response.events) {
     const topic = extractTopicName(item.topic);
     const parsedData = parseEventData(item.value);
+    const resolvedContractId =
+      typeof item.contractId === "string"
+        ? item.contractId
+        : typeof (item.contractId as any)?.contractId === "function"
+        ? (item.contractId as any).contractId()
+        : String(item.contractId);
+    const itemCursor = item.pagingToken ?? item.id ?? nextCursor;
 
     await recordContractEvent(client, {
-      contractId: item.contractId,
+      contractId: resolvedContractId,
       topic,
       ledger: item.ledger,
       txHash: item.txHash,
-      cursor: item.pagingToken,
+      cursor: itemCursor,
       data: parsedData,
     });
 
-    await processContractEvent(client, item, contractReader);
+    await processContractEvent(
+      client,
+      { ...item, contractId: resolvedContractId, pagingToken: itemCursor },
+      contractReader
+    );
 
     if (item.ledger > maxLedger) {
       maxLedger = item.ledger;
     }
-    nextCursor = item.pagingToken;
+    nextCursor = itemCursor;
   }
 
   if (response.latestLedger > maxLedger && response.events.length === 0) {
