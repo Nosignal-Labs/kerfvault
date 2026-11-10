@@ -5,7 +5,7 @@
   "description": "Kerfvault Shopper PWA (Next.js)",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "pnpm --filter @kerfvault/sdk build && pnpm --filter @kerfvault/web-wallet build && next build",
+    "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
